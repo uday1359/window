@@ -20,6 +20,27 @@ the real outcome with evidence before calling anything "complete".
 >
 > Remaining gaps are listed in KNOWN_ISSUES.md.
 
+## New computer: one file sets up everything
+
+`setup-windows.ps1` installs whatever is missing:
+- Git, Node.js LTS, Python 3.13 and the Visual C++ runtime
+- MySQL 8.4 LTS, configured as the `MySQL84` service on `127.0.0.1:3306`
+- a check that Microsoft Edge is present
+
+Every installer is downloaded from its official site and verified (code signature and published
+checksum); winget and the Microsoft Store are not used. The script then gets this project,
+installs its npm and Python packages and its database, and builds it. It asks for the MySQL root
+password once, and for administrator approval once (for the software step only).
+
+From a **normal** PowerShell window (not "Run as administrator"):
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/uday1359/window/main/setup-windows.ps1 -OutFile "$HOME\setup-windows.ps1"; powershell -ExecutionPolicy Bypass -File "$HOME\setup-windows.ps1" -Validate
+```
+
+`-Validate` also runs every test at the end. In a project folder you can instead double-click
+`setup-windows.cmd`.
+
 ## Quick start (Windows PowerShell, project folder)
 
 ```powershell
