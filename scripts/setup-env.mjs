@@ -2,7 +2,7 @@
 // Secrets are generated randomly and never printed. Existing values are preserved
 // so re-running the script does not rotate secrets unexpectedly.
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +24,17 @@ function writeEnv(path, values, header) {
 }
 
 const secret = () => randomBytes(32).toString('base64url');
+
+/** Newest installed MySQL Server bin folder (8.0, 8.4, 9.x ...), for backups and restore checks. */
+function mysqlBinDir() {
+  const base = 'C:/Program Files/MySQL';
+  const found = existsSync(base)
+    ? readdirSync(base)
+        .filter((d) => /^MySQL Server \d+\.\d+$/.test(d) && existsSync(join(base, d, 'bin', 'mysql.exe')))
+        .sort((a, b) => parseFloat(b.split(' ')[2]) - parseFloat(a.split(' ')[2]))
+    : [];
+  return found.length ? `${base}/${found[0]}/bin` : `${base}/MySQL Server 8.0/bin`;
+}
 
 const creds = parseEnv(join(root, 'server', '.env.dbcreds'));
 const serverEnvPath = join(root, 'server', '.env');
@@ -52,7 +63,7 @@ const server = {
   WEB_ORIGIN: 'http://127.0.0.1:5173',
   STORAGE_DIR: join(root, 'storage').replace(/\\/g, '/'),
   BACKUP_DIR: join(root, 'backups').replace(/\\/g, '/'),
-  MYSQL_BIN_DIR: 'C:/Program Files/MySQL/MySQL Server 8.0/bin',
+  MYSQL_BIN_DIR: mysqlBinDir(),
   ...existingServer,
 };
 writeEnv(serverEnvPath, server, 'server environment');
