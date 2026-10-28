@@ -6,40 +6,60 @@ criteria; a policy engine decides what may run automatically and what needs your
 approval; a local Windows agent executes the authorised operations; and the server verifies
 the real outcome with evidence before calling anything "complete".
 
-> Status: see [REQUIREMENTS_TRACEABILITY.md](REQUIREMENTS_TRACEABILITY.md) and
-> [KNOWN_ISSUES.md](KNOWN_ISSUES.md). The mandatory acceptance task (create, read back and
-> verify `hello.txt`) passes end-to-end with the **real** agent. Features added on
-> 2026-10-28 are **NOT VALIDATED** until `scripts\validate.ps1` has been run:
-> - OCR
-> - web research with citations
-> - screenshot attachments
-> - REST/MCP integrations
-> - deadlines and offline retries
+> Status: see [docs/REQUIREMENTS_TRACEABILITY.md](docs/REQUIREMENTS_TRACEABILITY.md) and
+> [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md). All 206 automated tests pass (2026-10-28), including
+> the mandatory acceptance task (create, read back and verify `hello.txt`) end-to-end with the
+> **real** agent, Windows OCR, research, screenshot attachments, integrations (against simulated
+> servers), deadlines and offline retries. Not yet validated by a test run:
 > - TLS remote access
-> - the install/update/rollback scripts
->
-> Remaining gaps are listed in KNOWN_ISSUES.md.
+> - the update/rollback lifecycle test (`install.ps1` itself passed in a sandbox)
+> - `setup-windows.ps1` on a fresh machine
+> - the Electron runtime
+> - live cloud, vision and MCP services
 
-## New computer: one file sets up everything
+## New computer: one-click developer setup
 
-`setup-windows.ps1` installs whatever is missing:
-- Git, Node.js LTS, Python 3.13 and the Visual C++ runtime
-- MySQL 8.4 LTS, configured as the `MySQL84` service on `127.0.0.1:3306`
-- a check that Microsoft Edge is present
+**One click:** download [`setup-windows.cmd`](https://github.com/uday1359/window/raw/main/setup-windows.cmd)
+(GitHub → `setup-windows.cmd` → *Download raw file*) and double-click it as your normal user.
+It fetches `setup-windows.ps1` from GitHub by itself and then:
 
-Every installer is downloaded from its official site and verified (code signature and published
-checksum); winget and the Microsoft Store are not used. The script then gets this project,
-installs its npm and Python packages and its database, and builds it. It asks for the MySQL root
-password once, and for administrator approval once (for the software step only).
+1. **Software** (one administrator approval): installs whatever is missing of:
+   - Git, Node.js LTS, Python 3.13 and the Visual C++ runtime
+   - MySQL 8.4 LTS, configured as the `MySQL84` service on `127.0.0.1:3306`
+   - it also checks that Microsoft Edge is present
 
-From a **normal** PowerShell window (not "Run as administrator"):
+   Every installer comes from its official site and is verified (code signature and published
+   checksum); winget and the Microsoft Store are not used.
+2. **Project**: clones this repository to `%USERPROFILE%\WINDOW`, then installs the npm and
+   Python packages, creates the database user and databases, migrates and builds.
+3. **Developer tools**: VS Code plus the recommended extensions from `.vscode/extensions.json`.
+
+It asks for the MySQL root password once: the new password on a fresh machine, or your
+existing one.
+
+The same from PowerShell, with options:
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/uday1359/window/main/setup-windows.ps1 -OutFile "$HOME\setup-windows.ps1"; powershell -ExecutionPolicy Bypass -File "$HOME\setup-windows.ps1" -Validate
+powershell -ExecutionPolicy Bypass -File setup-windows.ps1 -Developer             # what the .cmd does
+powershell -ExecutionPolicy Bypass -File setup-windows.ps1 -Developer -Validate   # + run every test
+powershell -ExecutionPolicy Bypass -File setup-windows.ps1 -Developer -WithOllama # + local AI model (~2 GB)
+powershell -ExecutionPolicy Bypass -File setup-windows.ps1                        # runtime only, no developer tools
 ```
 
-`-Validate` also runs every test at the end. In a project folder you can instead double-click
-`setup-windows.cmd`.
+## Project layout
+
+| Path | Contents |
+|---|---|
+| `server/` | NestJS API server, Prisma schema and migrations, unit and integration tests |
+| `web/` | React dashboard |
+| `ai-service/` | Python planner, model router, research synthesis, integrations |
+| `agent/` | Python Windows agent |
+| `electron/` | Desktop shell |
+| `e2e/` | Real end-to-end tests |
+| `scripts/` | install, start/stop, update/rollback, TLS certificate, validation |
+| `docs/` | Architecture, API, database, security, deployment, testing, troubleshooting, decisions, requirements (PRD) and traceability, known issues, architecture PDFs |
+| `setup-windows.cmd` / `.ps1` | One-click setup of a new Windows computer |
+| `.vscode/` | Recommended extensions and editor settings |
 
 ## Quick start (Windows PowerShell, project folder)
 
@@ -52,7 +72,7 @@ powershell -ExecutionPolicy Bypass -File scripts\validate.ps1             # run 
 
 Update with `scripts\update.ps1 -Source <new release folder or zip>`; it rolls back
 automatically if anything fails, and `scripts\rollback.ps1` restores the last snapshot. Details:
-[DEPLOYMENT.md](DEPLOYMENT.md). The manual steps below do the same by hand.
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). The manual steps below do the same by hand.
 
 ## Components
 
@@ -66,7 +86,7 @@ automatically if anything fails, and `scripts\rollback.ps1` restores the last sn
 | `electron/` | Desktop shell reusing the dashboard, tray emergency stop | Electron 45 (see Known issues) |
 | `e2e/` | Real end-to-end acceptance tests | Playwright |
 
-Architecture: [ARCHITECTURE.md](ARCHITECTURE.md) · Data model: [DATABASE.md](DATABASE.md) · API: [API.md](API.md) · Security: [SECURITY.md](SECURITY.md)
+Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Data model: [docs/DATABASE.md](docs/DATABASE.md) · API: [docs/API.md](docs/API.md) · Security: [docs/SECURITY.md](docs/SECURITY.md)
 
 ## Requirements
 
@@ -149,7 +169,7 @@ cd agent; ..\.venv\Scripts\python -m pytest          # agent (real files, real h
 npm run test:e2e                     # REAL end-to-end acceptance test (winagent_e2e database, real agent)
 ```
 
-Details and latest results: [TESTING.md](TESTING.md).
+Details and latest results: [docs/TESTING.md](docs/TESTING.md).
 
 ## Emergency stop
 
@@ -162,4 +182,4 @@ operations until an administrator clears it. Nothing resumes automatically.
 
 ## More
 
-[DEPLOYMENT.md](DEPLOYMENT.md) · [TROUBLESHOOTING.md](TROUBLESHOOTING.md) · [DECISIONS.md](DECISIONS.md) · [CHANGELOG.md](CHANGELOG.md) · [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) · [PRD.md](PRD.md)
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) · [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) · [docs/DECISIONS.md](docs/DECISIONS.md) · [CHANGELOG.md](CHANGELOG.md) · [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) · [docs/PRD.md](docs/PRD.md)

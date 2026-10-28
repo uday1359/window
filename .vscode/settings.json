@@ -1,0 +1,20 @@
+{
+  // The shared virtual environment created by scripts\install.ps1 (ai-service and agent).
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  "python.analysis.extraPaths": ["${workspaceFolder}\\ai-service", "${workspaceFolder}\\agent"],
+  "eslint.workingDirectories": ["server", "web"],
+  "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" },
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true
+  },
+  "search.exclude": {
+    "**/dist": true,
+    "server/src/generated": true,
+    ".venv": true,
+    "logs": true,
+    "backups": true
+  }
+}

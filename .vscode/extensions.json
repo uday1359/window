@@ -1,0 +1,11 @@
+{
+  // Installed by setup-windows.ps1 -Developer; VS Code also offers them when the folder is opened.
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "prisma.prisma",
+    "ms-playwright.playwright",
+    "ms-vscode.powershell"
+  ]
+}

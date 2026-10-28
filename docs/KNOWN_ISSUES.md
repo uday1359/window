@@ -2,21 +2,18 @@
 
 Status as of 2026-10-28. See [REQUIREMENTS_TRACEABILITY.md](REQUIREMENTS_TRACEABILITY.md) for the requirement-by-requirement view.
 
-## Implemented on 2026-10-28, tests not yet run (NOT VALIDATED)
+## Not yet validated by a test run
 
-These passed typecheck, lint and schema checks, and have tests written, but the tests were not
-run on the development PC (it ran out of memory). Run `scripts\validate.ps1` (add
-`-IncludeLifecycle` for the update tests) and send back `logs\validation-*\report.md`.
+All 206 automated tests passed on 2026-10-28 (docs/TESTING.md). The following have no passing run yet:
 
-- **Security upgrades:** Prisma 7 (driver adapter), zod 4, vitest 4, Electron 45. Server, web and e2e suites passed after Prisma 7 and zod 4 here; the later feature work has not been re-run.
-- **Install / update / rollback scripts** (`scripts\*.ps1`). `install.ps1` passed in a sandbox; `test-lifecycle.ps1` has not completed.
+- **Update / rollback lifecycle** (`scripts\test-lifecycle.ps1`): `install.ps1` passed in a sandbox, but the full lifecycle needs about 4 GB of free memory. Run `scripts\validate.ps1 -IncludeLifecycle` on a larger machine.
 - **TLS remote access** (`scripts\new-tls-cert.ps1`, `TLS_*` settings, agent `ca_file`).
-- **Deadline enforcement and offline planning retries.**
-- **Windows OCR** (`desktop.ocr`, `screen_contains_text`). It needs an installed Windows language with OCR support. On Windows Server it may be missing, in which case the test is skipped and verification is INCONCLUSIVE, not FAIL.
-- **Internet research with citations** (`browser.research`), including live DuckDuckGo result parsing.
-- **Screenshot attachments** and vision-model planning. No vision model has been tested end to end.
-- **REST and MCP integrations.** Tested against simulated servers only; no live MCP server has been used.
-- **Three new database migrations** (`task_retry_planning`, `task_attachments`, `integrations`). Their SQL matches Prisma's generated output, but they have not been applied with `migrate deploy`.
+- **`setup-windows.ps1` on a fresh machine.** The installer signature and checksum checks were verified against the real downloads.
+- **Live services:**
+  - research against live DuckDuckGo results (source selection is unit-tested)
+  - vision models for screenshot attachments
+  - real MCP servers (the MCP client is tested against a simulated server)
+- **Windows Server OCR:** passed on Windows 11. On Windows Server an OCR language may be missing; then the test is skipped and verification is INCONCLUSIVE, not FAIL.
 
 ## Not implemented / partial
 

@@ -8,11 +8,11 @@ rows counted individually); they are not run results.
 
 | Suite | Location | Runner | Cases | Needs |
 |---|---|---|---|---|
-| Server unit | `server/src/**/*.spec.ts` | Jest (project `unit`) | 64 | nothing |
-| Server integration | `server/test/*.int.ts` | Jest (project `integration`) | 28 | MySQL `winagent_test`, Python venv (real AI service), MySQL client binaries |
-| Dashboard | `web/src/test/*.test.tsx` | Vitest + jsdom | 8 | nothing |
-| AI service | `ai-service/tests` | pytest | 27 | Python venv (1 test Windows-only) |
-| Agent | `agent/tests` | pytest | 32 | Windows, Microsoft Edge, desktop session |
+| Server unit | `server/src/**/*.spec.ts` | Jest (project `unit`) | 71 | nothing |
+| Server integration | `server/test/*.int.ts` | Jest (project `integration`) | 33 | MySQL `winagent_test`, Python venv (real AI service), MySQL client binaries |
+| Dashboard | `web/src/test/*.test.tsx` | Vitest + jsdom | 10 | nothing |
+| AI service | `ai-service/tests` | pytest | 51 | Python venv (1 test Windows-only) |
+| Agent | `agent/tests` | pytest | 39 | Windows, Microsoft Edge, desktop session, an OCR-capable Windows language (else the OCR test is skipped) |
 | End-to-end | `e2e/*.e2e.ts` | Playwright | 2 | MySQL `winagent_e2e`, venv, Edge, built server + web, **real agent** |
 
 ## Commands
@@ -40,7 +40,7 @@ Python test configuration is in `ai-service/pyproject.toml` and `agent/pyproject
 `integration` with `rootDir: test`, regex `.int.ts`, global setup/teardown and a 60 s
 per-test timeout from `server/test/setup-timeout.ts`).
 
-## Server unit tests (65 cases)
+## Server unit tests (71 cases)
 
 | File | Cases | Covers |
 |---|---|---|
@@ -49,7 +49,7 @@ per-test timeout from `server/test/setup-timeout.ts`).
 | `server/src/orchestrator/verifier.spec.ts` | 12 | exact-content verification with hash; 5 near-miss contents fail; missing file; hash mismatch; agent unreachable → inconclusive; simulated evidence flagged; step-status and page-text criteria; overall outcome never succeeds without full evidence |
 | `server/src/policy/policy.spec.ts` | 10 | low-risk auto-allow; agent-unconfigured roots denied; unknown device denied; folder DENY / sub-path REQUIRE_APPROVAL; copy/move destination roots; overwrite → MEDIUM; HIGH/external always need approval; websites (deny, allow, unknown, private); applications; DENY beats ALLOW, unknown ops denied |
 
-## Server integration tests (30 cases)
+## Server integration tests (33 cases)
 
 Prerequisites:
 
@@ -69,7 +69,7 @@ Prerequisites:
 | `server/test/auth.int.ts` | 8 | single admin bootstrap under concurrency; weak password / bad input / missing CSRF header; auth required, no hash leakage; lockout; DB-sourced RBAC and ownership; single-use pairing codes, bad device tokens; revoke disconnects and blocks reconnect; dashboard WebSocket needs session + allowed origin |
 | `server/test/tasks.int.ts` | 22 | hello.txt flow with evidence + audit; idempotency key (incl. concurrent); wrong content fails verification (and sets `finishedAt`); heartbeat with `resources: null` still updates `lastSeenAt`; missing file after write; secrets in instruction refused; clarification + replan; approval bound to exact action, stale hashes rejected; rejection stops task; policy at plan and run time; emergency stop propagation and resume block; no blind repeat of timed-out non-idempotent op; journal reconciliation of idempotent op; INTERRUPTED after restart; checkpoint re-check on resume; cancel/pause state machine; LOCAL_ONLY never routes to cloud; memory review/edit/export/delete, secrets refused; save/reuse skill, disabled skill refused; MySQL backup + restore verification; AI-service 404 passed through (unknown secret); audit contains no secrets |
 
-## Dashboard tests (8 cases) — `web/src/test/app.test.tsx`
+## Dashboard tests (10 cases) — `web/src/test/*.test.tsx`
 
 API client sends the CSRF header only on mutations and surfaces validation issues; reports
 an unreachable server; `StatusBadge` conveys status with text; `ApprovalCard` shows the
@@ -78,7 +78,7 @@ setup and shows server errors; New task submits an idempotency key and privacy l
 detail shows evidence and labels simulated results. Setup: `web/src/test/setup.ts`
 (jest-dom matchers, cleanup). The API is mocked; no server needed.
 
-## AI service tests (27 cases) — `ai-service/tests`
+## AI service tests (51 cases) — `ai-service/tests`
 
 | File | Cases | Covers |
 |---|---|---|
@@ -88,7 +88,7 @@ detail shows evidence and labels simulated results. Setup: `web/src/test/setup.t
 
 Model calls are injected fakes; Ollama and cloud providers are not contacted.
 
-## Agent tests (32 cases) — `agent/tests`
+## Agent tests (39 cases) — `agent/tests`
 
 Fixtures (`conftest.py`) use a temporary agent home (`WINAGENT_AGENT_HOME`) and temporary
 approved folders; real files are written there.
@@ -134,7 +134,7 @@ Run it from a Remote Desktop session (the agent's UI Automation tests need a des
 `logs\validation-<timestamp>\report.md` and one log per step; send back the report and any
 failed logs.
 
-## Tests added on 2026-10-28 (not yet run: NOT VALIDATED)
+## Tests added on 2026-10-28 (all passed on 2026-10-28 except `test-lifecycle.ps1`)
 
 | File | New tests |
 |---|---|
@@ -154,23 +154,35 @@ failed logs.
 
 ## Latest results
 
-The run below covers the code **before** the 2026-10-28 feature additions (Phases C-D). It is
-kept for reference; the extended suite must be re-run with `scripts\validate.ps1`.
-
-Final audit run on 2026-10-28, Windows 11 Pro, Node 24.22.1, Python 3.13.17, MySQL 8.0, Microsoft Edge.
+Full run on 2026-10-28 after all additions, on Windows 11 Pro with Node 24.22.1, Python 3.13.17,
+MySQL 8.0 and Microsoft Edge. Every suite was run separately (the PC has 8 GB RAM).
 
 | Suite | Command | Result |
 |---|---|---|
-| Server unit | `npm run test --workspace server` | 65 passed |
-| Server integration (simulated agent) | same command | 30 passed |
-| Dashboard | `npm run test --workspace web` | 8 passed |
-| AI service | `cd ai-service; ...venvScriptspython -m pytest` | 27 passed (1 third-party deprecation warning from Starlette's test client) |
-| Agent (real files, Edge, UIA) | `cd agent; ...venvScriptspython -m pytest` | 32 passed |
-| End-to-end (real agent) | `npm run test:e2e` | 2 passed |
-| Lint / typecheck | `npm run lint`, `npm run typecheck`, `ruff check ai-service agent`, `tsc --noEmit -p electron/tsconfig.json` | clean |
-| Prisma schema | `npm run prisma:validate --workspace server` | valid |
+| Server unit | `npx jest --selectProjects unit` (in `server`) | 71 passed |
+| Server integration (MySQL, real AI service, simulated agent) | `npx jest --runInBand --selectProjects integration` | 33 passed |
+| Dashboard | `npm run test --workspace web` | 10 passed |
+| AI service | `cd ai-service; ..\.venv\Scripts\python -m pytest` | 51 passed (1 third-party deprecation warning from Starlette's test client) |
+| Agent (real files, headless Edge, UI Automation, Windows OCR) | `cd agent; ..\.venv\Scripts\python -m pytest -rs` | 39 passed, none skipped |
+| End-to-end (real agent, built stack) | `npm run test:e2e` | 2 passed |
+| **Total** | | **206 passed, 0 failed** |
+| Lint / typecheck / Python lint / PowerShell syntax | `npm run lint`, `npm run typecheck`, `ruff check ai-service agent`, `scripts\lib\check-ps-syntax.ps1` | clean |
+| Prisma schema and migrations | `prisma validate`; all 4 migrations applied by the integration and e2e setups | valid / applied |
 | Build | `npm run build` | succeeded |
 
-Expected log noise: the server suite prints three `prisma:error … Unique constraint failed` lines. They come from the duplicate-idempotency-key tests and are asserted on, not failures.
+The run found and fixed one defect: the Policies page had two fields labelled "Type". The
+integrations form fields are now "Integration type/name/address", and the e2e test selects the
+policy fields by role and exact name.
 
-NOT VALIDATED: Electron runtime (binary not downloadable), cloud LLM providers against live accounts, voice input with a real microphone.
+Expected log noise: the server suite prints three `prisma:error … Unique constraint failed` lines.
+They come from the duplicate-idempotency-key tests and are asserted on, not failures.
+
+NOT VALIDATED:
+- `scripts\test-lifecycle.ps1` (update / rollback / automatic rollback). It needs about 4 GB of
+  free memory, more than the development PC had.
+- TLS remote access
+- `setup-windows.ps1` on a fresh machine; its installer signature checks were verified against
+  the real downloads
+- the Electron runtime
+- cloud LLM providers, vision models and MCP servers against live services
+- voice input with a real microphone

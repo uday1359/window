@@ -80,7 +80,7 @@ $missing = @($state.Keys | Where-Object { -not $state[$_] })
 
 if ($missing.Count -and $InstallPrerequisites) {
   if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
-    throw "winget is not available on this machine. Install manually: $($missing -join ', '). See DEPLOYMENT.md."
+    throw "winget is not available on this machine. Install manually: $($missing -join ', '). See docs\DEPLOYMENT.md."
   }
   foreach ($name in $missing) {
     Write-Step "Installing $name with winget ($($WingetIds[$name]))"
@@ -96,7 +96,7 @@ if ($missing.Count -and $InstallPrerequisites) {
   }
 }
 if ($CheckOnly) { if ($missing.Count) { exit 1 } else { exit 0 } }
-if ($missing.Count) { throw "Missing prerequisites: $($missing -join ', '). Re-run with -InstallPrerequisites or install them manually (DEPLOYMENT.md)." }
+if ($missing.Count) { throw "Missing prerequisites: $($missing -join ', '). Re-run with -InstallPrerequisites or install them manually (docs\DEPLOYMENT.md)." }
 
 # ------------------------------------------------------------------ 2. dependencies
 Write-Step 'Installing Node.js dependencies (npm ci)'

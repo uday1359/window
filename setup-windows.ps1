@@ -18,9 +18,16 @@
   Run it from a NORMAL PowerShell window (not "Run as administrator"); it asks for admin
   rights only for the software step. The local agent refuses to run elevated.
 
+  3. With -Developer: VS Code and the project's recommended extensions (per user, no admin).
+     With -WithOllama: Ollama and the qwen2.5:3b local model.
+
+  One click: download setup-windows.cmd alone and double-click it. It fetches this script
+  from GitHub if needed and runs a developer setup (-Developer).
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File setup-windows.ps1
-  powershell -ExecutionPolicy Bypass -File setup-windows.ps1 -Validate
+  powershell -ExecutionPolicy Bypass -File setup-windows.ps1 -Developer -Validate
+  powershell -ExecutionPolicy Bypass -File setup-windows.ps1 -Developer -WithOllama
 #>
 [CmdletBinding()]
 param(
@@ -28,6 +35,10 @@ param(
   [string]$ProjectDir,
   # Run scripts\validate.ps1 -IncludeLifecycle after the setup.
   [switch]$Validate,
+  # Developer tools: VS Code plus the extensions in .vscode\extensions.json (per user, no admin).
+  [switch]$Developer,
+  # Also install Ollama and pull the qwen2.5:3b local model (about 2 GB download).
+  [switch]$WithOllama,
   # Internal: the elevated software step.
   [ValidateSet('All', 'Software')][string]$Phase = 'All',
   [string]$SecretFile,
@@ -289,6 +300,53 @@ try {
 }
 if ($installCode -ne 0) { throw 'scripts\install.ps1 failed; see the messages above.' }
 
+function Install-DeveloperTools([string]$Dir) {
+  Write-Step 'VS Code (developer editor)'
+  $codeCmd = @("$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd", "$env:ProgramFiles\Microsoft VS Code\bin\code.cmd") | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if ($codeCmd) { Write-Ok 'already installed' }
+  else {
+    $f = Get-File 'https://update.code.visualstudio.com/latest/win32-x64-user/stable' 'VSCodeUserSetup-x64.exe'
+    Assert-Genuine $f 'O=Microsoft Corporation'
+    Invoke-Installer $f @('/VERYSILENT', '/NORESTART', '/MERGETASKS=!runcode,addtopath,addcontextmenufiles,addcontextmenufolders,associatewithfiles')
+    $codeCmd = "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd"
+    if (-not (Test-Path $codeCmd)) { throw 'VS Code installation did not complete.' }
+    Write-Ok 'installed'
+  }
+  $list = Join-Path $Dir '.vscode\extensions.json'
+  if (Test-Path $list) {
+    # The file may contain // comments, which ConvertFrom-Json in Windows PowerShell does not accept.
+    $json = (Get-Content $list | Where-Object { $_ -notmatch '^\s*//' }) -join "`n"
+    foreach ($ext in ($json | ConvertFrom-Json).recommendations) {
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      & $codeCmd --install-extension $ext --force 2>&1 | Out-Null
+      $code = $LASTEXITCODE; $ErrorActionPreference = $prev
+      if ($code -eq 0) { Write-Ok "extension $ext" } else { Write-Warn "extension $ext could not be installed (install it later from VS Code)" }
+    }
+  }
+
+  if ($WithOllama) {
+    Write-Step 'Ollama (local AI models)'
+    $ollama = "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe"
+    if (Test-Path $ollama) { Write-Ok 'already installed' }
+    else {
+      $f = Get-File 'https://ollama.com/download/OllamaSetup.exe' 'OllamaSetup.exe'
+      Assert-Genuine $f $null
+      Invoke-Installer $f @('/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES')
+      Write-Ok 'installed'
+    }
+    if (Test-Path $ollama) {
+      Write-Host '    pulling qwen2.5:3b (about 2 GB, once) ...'
+      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+      & $ollama pull qwen2.5:3b 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host "    $_" }
+      $code = $LASTEXITCODE; $ErrorActionPreference = $prev
+      if ($code -eq 0) { Write-Ok 'model ready. Add it in the dashboard: AI & models -> Add model (ollama, qwen2.5:3b, http://127.0.0.1:11434).' }
+      else { Write-Warn 'model download failed: start Ollama from the Start menu, then run: ollama pull qwen2.5:3b' }
+    }
+  }
+}
+
+if ($Developer -or $WithOllama) { Install-DeveloperTools $ProjectDir }
+
 if ($Validate) {
   if (Test-Admin) {
     Write-Warn 'Skipping tests: this window is elevated and the agent refuses to run as administrator. Run scripts\validate.ps1 from a normal window.'
@@ -303,4 +361,5 @@ Write-Host @"
     Start WinAgent : powershell -ExecutionPolicy Bypass -File "$ProjectDir\scripts\start.ps1"
     Dashboard      : http://127.0.0.1:3710  (create the first administrator there)
     Run all tests  : powershell -ExecutionPolicy Bypass -File "$ProjectDir\scripts\validate.ps1" -IncludeLifecycle
+    Open the code  : code "$ProjectDir"   (after -Developer)
 "@

@@ -57,3 +57,10 @@ First implementation of the PRD.
 ## setup-windows (2026-10-28)
 - `setup-windows.ps1` / `setup-windows.cmd`: one-file setup of a new Windows machine (Git, Node.js LTS, Python 3.13, VC++ runtime, MySQL 8.4 configured as a service; signature- and checksum-verified direct downloads, no winget), then project install and optional full validation.
 - `install.ps1` repairs a mismatched database login; `setup-env.mjs` keeps database URLs valid on refresh; Python 3.11-3.13 enforced (3.14+ has no wheels for the pinned packages).
+
+## Clean-up and developer setup (2026-10-28)
+- **Full local test run: 206 tests passed** (server unit 71, integration 33, dashboard 10, AI service 51, agent 39, real-agent e2e 2).
+- Fixed: the Policies page had two fields labelled "Type" (integrations form now uses "Integration type/name/address"); e2e selects fields by role.
+- One-click developer setup: `setup-windows.cmd` works on its own (downloads `setup-windows.ps1`, with a GitHub API fallback when raw.githubusercontent.com is blocked) and runs `-Developer`: VS Code plus the `.vscode/extensions.json` recommendations; optional `-WithOllama`.
+- Added `.vscode/` (recommended extensions, Python interpreter, ESLint working directories, search exclusions) and `.gitattributes` (CRLF for `.cmd`).
+- Project tidied: long documents and architecture PDFs moved to `docs/`; duplicate `PRD.txt` removed; all links updated.

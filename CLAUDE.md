@@ -1,6 +1,6 @@
 # CLAUDE.md — WinAgent
 
-Windows 11 AI desktop-control agent. Read README.md, ARCHITECTURE.md and KNOWN_ISSUES.md first; requirements are in PRD.md and their status in REQUIREMENTS_TRACEABILITY.md.
+Windows 11 AI desktop-control agent. Read README.md, docs/ARCHITECTURE.md and docs/KNOWN_ISSUES.md first; requirements are in docs/PRD.md and their status in docs/REQUIREMENTS_TRACEABILITY.md.
 
 ## Layout
 - `server/` NestJS 11 + Prisma 7 (MariaDB driver adapter, client generated into `server/src/generated`) + MySQL 8 (API, orchestrator, policy, approvals, agent hub)
@@ -8,6 +8,7 @@ Windows 11 AI desktop-control agent. Read README.md, ARCHITECTURE.md and KNOWN_I
 - `agent/` local Windows agent (Python 3.13, Playwright/Edge, pywinauto)
 - `web/` React 19 + Vite dashboard; `electron/` desktop shell; `e2e/` Playwright acceptance tests
 - Python venv at `.venv` (shared by ai-service and agent)
+- `docs/` all long-form documentation; `scripts/` install/start/stop/update/rollback/validate; `setup-windows.cmd`/`.ps1` one-click new-machine setup; `.vscode/` editor settings
 
 ## Commands (PowerShell, project root)
 - Lint / typecheck: `npm run lint`, `npm run typecheck`; Python: `.venv\Scripts\python -m ruff check ai-service agent`
@@ -25,4 +26,4 @@ Windows 11 AI desktop-control agent. Read README.md, ARCHITECTURE.md and KNOWN_I
 - Schema changes need a migration in `server/prisma/migrations`; copy the SQL from `npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script` (Windows lowercases table names, so other diffs are noisy).
 - Installation-state folders (`backups`, `data`, `logs`, `storage`) exist only at the project root; never exclude those names elsewhere (`server/src/backups` is source code).
 - Full validation: `powershell -ExecutionPolicy Bypass -File scripts\validate.ps1` (report in `logs\validation-*`).
-- Keep docs in sync: update REQUIREMENTS_TRACEABILITY.md, KNOWN_ISSUES.md and CHANGELOG.md with behaviour changes.
+- Keep docs in sync: update docs/REQUIREMENTS_TRACEABILITY.md, docs/KNOWN_ISSUES.md and CHANGELOG.md with behaviour changes.
