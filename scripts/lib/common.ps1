@@ -94,6 +94,12 @@ function Get-MySqlBin {
   $dir = (Get-ServerEnv)['MYSQL_BIN_DIR']
   if (-not $dir) { $dir = 'C:/Program Files/MySQL/MySQL Server 8.0/bin' }
   if (Test-Path (Join-Path $dir 'mysql.exe')) { return $dir }
+  # Fresh machines usually have a newer version (8.4 LTS, 9.x): use the newest installed one.
+  $installed = Get-ChildItem 'C:\Program Files\MySQL' -Directory -Filter 'MySQL Server *' -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path (Join-Path $_.FullName 'bin\mysql.exe') } |
+    Sort-Object { [version]($_.Name -replace '^MySQL Server ', '') } -Descending |
+    Select-Object -First 1
+  if ($installed) { return (Join-Path $installed.FullName 'bin') }
   $cmd = Get-Command mysql.exe -ErrorAction SilentlyContinue
   if ($cmd) { return Split-Path $cmd.Source }
   throw "mysql.exe not found. Install the MySQL 8 client tools or set MYSQL_BIN_DIR in server\.env."
