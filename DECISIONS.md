@@ -1,0 +1,28 @@
+# Design Decisions
+
+Short records of choices that are not obvious from the code.
+
+| # | Decision | Why | Consequence |
+|---|---|---|---|
+| D-01 | **Deterministic rule planner runs before any LLM.** | Common requests (files, folders, sites, search, apps, windows, screenshots, resources) need no model; this is faster, works offline, and never sends data anywhere. | Ollama is optional. Unusual requests need a configured model. |
+| D-02 | **Plans may only use a whitelisted operation catalogue** (`server/src/operations/operations.ts`). | An LLM must never be able to produce arbitrary commands. | New capabilities require code changes on both server and agent. |
+| D-03 | **Approved folders and apps are configured on the agent, not the server.** | A compromised server or dashboard account must not be able to widen access on the PC. | Changing roots/apps means editing `agent-config.json` on the PC. |
+| D-04 | **Approvals are bound to a SHA-256 hash of the exact action**, and the agent re-checks sensitive operations. | An approval for one action must never authorise a modified one. Defence in depth if the server is wrong. | Re-planning invalidates earlier approvals. |
+| D-05 | **Policy is evaluated twice:** at planning and immediately before dispatch. | Revoking a permission must also stop queued and running tasks. | A task can become BLOCKED mid-run. |
+| D-06 | **Sequential execution, one task and one operation at a time.** | Desktop and browser actions on one screen must not interleave; simpler recovery. | Lower throughput; acceptable for a personal agent. |
+| D-07 | **Uncertain operations are never retried blindly.** The server asks the agent journal (`op_status`); only idempotent, non-external steps are retried. | Avoids duplicate external effects (double submissions, double moves). | Some tasks stop as UNCERTAIN and need the user. |
+| D-08 | **No automatic resume after restart.** Running tasks become INTERRUPTED; resume inspects checkpoints on disk first. | PRD safety rule; the world may have changed while the server was down. | The user must press Resume. |
+| D-09 | **WebSocket authentication happens on the HTTP upgrade** (session cookie for the dashboard, bearer device token for the agent), and an agent receives work only after its `hello`. | Unauthenticated sockets are never accepted; fixes a race found in testing where work could be sent before the agent reported its configuration. | — |
+| D-10 | **Agent connects outward only.** | No inbound port on the user's PC. | Remote use needs a reachable server with TLS (`scripts\new-tls-cert.ps1`). |
+| D-11 | **hello.txt content period.** The acceptance instruction "containing exactly: Hello from my AI agent." is parsed so the sentence-ending period belongs to the content (`Hello from my AI agent.`, 23 bytes). | The PRD acceptance text ends with that sentence; the e2e test checks the exact bytes and the SHA-256. | Content written by the rule planner ends with the period. |
+| D-12 | **Secrets on Windows use DPAPI** (device token, model API keys). Passwords and session/device tokens are stored in MySQL only as hashes. | Uses the OS facility tied to the user account; nothing in plaintext. | Secrets cannot be moved to another Windows account. |
+| D-13 | **Tests use real dependencies where possible**: real MySQL test databases, real AI service, real Edge and UIA in agent tests, real agent in e2e. Only server integration tests use a simulated agent. | Mocks hide integration bugs (several were found this way). | Tests need MySQL and Edge installed. |
+| D-14 | **Electron installed with `ELECTRON_SKIP_BINARY_DOWNLOAD=1`.** | The GitHub release CDN was unreachable (ECONNRESET); a third-party mirror was not used without approval. | Desktop shell compiles but is not validated at runtime. |
+| D-15 | **Prisma `migrate reset` not used by automation.** Tests use `migrate deploy` plus a guarded TRUNCATE limited to `winagent_test` / `winagent_e2e`. | Prisma refuses resets triggered by AI agents; the guard prevents touching the real database. | — |
+| D-16 | **Integrations run in the AI service, not the agent or the server.** | The AI service already holds credentials in the DPAPI store; keys never pass through the server, the database or the agent. | The AI service must be running for integration steps. |
+| D-17 | **MCP over HTTP only; no stdio servers.** | A stdio MCP server is a local program started on demand: arbitrary code execution from a plan. | Local MCP tools must be exposed over HTTP on loopback. |
+| D-18 | **"Verified" research claims are decided by rules, not by the model.** | Two independent domains or one official source. A model cannot mark its own claims as verified. | Some true claims stay "single-source" when sources are scarce. |
+| D-19 | **Screenshots go to cloud models only under CLOUD_ALLOWED.** | Images cannot be redacted, so CLOUD_REDACTED would be a false promise. | CLOUD_REDACTED tasks with screenshots need a local vision model. |
+| D-20 | **OCR uses the Windows engine through a constant PowerShell script.** | No new dependencies, no cloud service, no task data on the command line. | Needs an OCR-capable Windows language; otherwise verification is INCONCLUSIVE. |
+| D-21 | **Offline planning waits instead of failing; past deadlines block instead of running late.** | Both turn silent surprises into visible, user-controlled states. | Cancel ends a wait; Resume overrides a deadline (audited). |
+| D-22 | **Hand-written migrations are copied from Prisma's own `migrate diff --from-empty` output.** | `migrate dev` needs a shadow database and, on Windows, MySQL's lowercase table names make diffs noisy. | Each new migration must still be applied with `migrate deploy` on the target. |

@@ -1,0 +1,34 @@
+node_modules/
+dist/
+build/
+out/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+server/.env.dbcreds
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+playwright-report/
+test-results/
+# Installation state at the project root only (server/src/backups is source code).
+/backups/
+/data/
+/storage/
+/logs/
+release/
+*.dpapi
+e2e/.run/
+
+# Private keys and remote-desktop files must never be committed
+*.pem
+*.key
+*.rdp
+
+# Generated Prisma client (npm run prisma:generate)
+server/src/generated/

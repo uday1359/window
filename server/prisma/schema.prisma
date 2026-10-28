@@ -1,0 +1,574 @@
+// Windows 11 AI Desktop-Control Agent - MySQL schema.
+// All timestamps are stored in UTC (DATETIME(3)); the API emits ISO-8601 UTC strings.
+// No plaintext passwords, API keys or tokens are stored: only salted hashes or
+// references to secrets held in the Windows DPAPI-protected secret store.
+
+// The client is generated as CommonJS into src/generated (git-ignored) so the NestJS build
+// compiles it with the rest of the server. Connection URLs live in prisma.config.ts.
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ---------------------------------------------------------------- identity
+
+model User {
+  id             String    @id @default(uuid()) @db.Char(36)
+  email          String    @unique @db.VarChar(254)
+  displayName    String    @db.VarChar(100)
+  passwordHash   String    @db.VarChar(255)
+  isActive       Boolean   @default(true)
+  failedLogins   Int       @default(0)
+  lockedUntil    DateTime? @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @db.DateTime(3)
+
+  roles          UserRole[]
+  sessions       UserSession[]
+  tasks          Task[]
+  approvalDecisions ApprovalDecision[]
+  preferences    UserPreference[]
+  policies       PermissionPolicy[]
+  skills         WorkflowSkill[]
+  memories       MemoryRecord[]
+  notifications  Notification[]
+  devices        AgentDevice[]
+  pairingCodes   PairingCode[]
+}
+
+model Role {
+  id          String           @id @db.VarChar(32) // ADMIN | OPERATOR | VIEWER
+  description String           @db.VarChar(255)
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id          String           @id @db.VarChar(64) // e.g. "task:create"
+  description String           @db.VarChar(255)
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String     @db.VarChar(32)
+  permissionId String     @db.VarChar(64)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId    String   @db.Char(36)
+  roleId    String   @db.VarChar(32)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model UserSession {
+  id         String    @id @default(uuid()) @db.Char(36)
+  userId     String    @db.Char(36)
+  tokenHash  String    @unique @db.Char(64) // sha256 of the opaque session token
+  userAgent  String?   @db.VarChar(255)
+  createdAt  DateTime  @default(now()) @db.DateTime(3)
+  lastSeenAt DateTime  @default(now()) @db.DateTime(3)
+  expiresAt  DateTime  @db.DateTime(3)
+  revokedAt  DateTime? @db.DateTime(3)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------- tasks
+
+enum TaskStatus {
+  PENDING
+  PLANNING
+  NEEDS_CLARIFICATION
+  AWAITING_APPROVAL
+  QUEUED
+  RUNNING
+  PAUSED
+  INTERRUPTED
+  BLOCKED
+  SUCCEEDED
+  PARTIAL
+  FAILED
+  CANCELLED
+  REJECTED
+}
+
+enum PrivacyLevel {
+  LOCAL_ONLY
+  CLOUD_REDACTED
+  CLOUD_ALLOWED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Task {
+  id              String       @id @default(uuid()) @db.Char(36)
+  userId          String       @db.Char(36)
+  title           String       @db.VarChar(200)
+  instruction     String       @db.Text
+  status          TaskStatus   @default(PENDING)
+  statusReason    String?      @db.VarChar(500)
+  privacyLevel    PrivacyLevel @default(LOCAL_ONLY)
+  riskLevel       RiskLevel?
+  priority        Int          @default(0)
+  queuePosition   Int          @default(0)
+  deadline        DateTime?    @db.DateTime(3)
+  /// Set while a BLOCKED task waits for a model or the AI service to come back online (FR-14).
+  retryPlanningAt DateTime?    @db.DateTime(3)
+  idempotencyKey  String?      @db.VarChar(100)
+  plan            Json?
+  successCriteria Json?
+  planSource      String?      @db.VarChar(50) // "rules" | "model:<name>"
+  clarification   String?      @db.Text
+  progress        Int          @default(0) // 0..100
+  agentDeviceId   String?      @db.Char(36)
+  skillId         String?      @db.Char(36)
+  version         Int          @default(0) // optimistic concurrency for state transitions
+  createdAt       DateTime     @default(now()) @db.DateTime(3)
+  updatedAt       DateTime     @updatedAt @db.DateTime(3)
+  startedAt       DateTime?    @db.DateTime(3)
+  finishedAt      DateTime?    @db.DateTime(3)
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentDevice  AgentDevice?       @relation(fields: [agentDeviceId], references: [id], onDelete: SetNull)
+  skill        WorkflowSkill?     @relation(fields: [skillId], references: [id], onDelete: SetNull)
+  steps        TaskStep[]
+  dependsOn    TaskDependency[]   @relation("dependent")
+  dependents   TaskDependency[]   @relation("prerequisite")
+  checkpoints  TaskCheckpoint[]
+  approvals    ApprovalRequest[]
+  executions   TaskExecution[]
+  evidence     VerificationEvidence[]
+  attachments  TaskAttachment[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, status])
+  @@index([status, queuePosition])
+  @@index([status, retryPlanningAt])
+  @@index([createdAt])
+}
+
+enum StepStatus {
+  PENDING
+  AWAITING_APPROVAL
+  RUNNING
+  SUCCEEDED
+  FAILED
+  UNCERTAIN
+  SKIPPED
+  CANCELLED
+}
+
+model TaskStep {
+  id          String     @id @default(uuid()) @db.Char(36)
+  taskId      String     @db.Char(36)
+  index       Int
+  operation   String     @db.VarChar(64)
+  description String     @db.VarChar(500)
+  params      Json
+  riskLevel   RiskLevel  @default(LOW)
+  requiresApproval Boolean @default(false)
+  idempotent  Boolean    @default(true)
+  status      StepStatus @default(PENDING)
+  attempts    Int        @default(0)
+  maxAttempts Int        @default(2)
+  result      Json?
+  error       String?    @db.VarChar(1000)
+  startedAt   DateTime?  @db.DateTime(3)
+  finishedAt  DateTime?  @db.DateTime(3)
+  task        Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  approvals   ApprovalRequest[]
+  executions  TaskExecution[]
+
+  @@unique([taskId, index])
+  @@index([status])
+}
+
+model TaskDependency {
+  taskId          String   @db.Char(36)
+  dependsOnTaskId String   @db.Char(36)
+  createdAt       DateTime @default(now()) @db.DateTime(3)
+  task            Task     @relation("dependent", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn       Task     @relation("prerequisite", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, dependsOnTaskId])
+  @@index([dependsOnTaskId])
+}
+
+model TaskCheckpoint {
+  id         String   @id @default(uuid()) @db.Char(36)
+  taskId     String   @db.Char(36)
+  stepIndex  Int
+  state      Json     // verified outputs of completed steps; never secrets
+  verified   Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.DateTime(3)
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, stepIndex])
+}
+
+/// Screenshot attached to a task (FR-01). The image lives in STORAGE_DIR; only metadata is in MySQL.
+model TaskAttachment {
+  id          String   @id @default(uuid()) @db.Char(36)
+  taskId      String   @db.Char(36)
+  mediaType   String   @db.VarChar(32)
+  sizeBytes   Int
+  sha256      String   @db.Char(64)
+  storagePath String   @db.VarChar(500) // relative to STORAGE_DIR
+  createdAt   DateTime @default(now()) @db.DateTime(3)
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+enum ExecutionStatus {
+  DISPATCHED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  TIMED_OUT
+  CANCELLED
+  UNCERTAIN
+}
+
+model TaskExecution {
+  id            String          @id @default(uuid()) @db.Char(36)
+  taskId        String          @db.Char(36)
+  stepId        String          @db.Char(36)
+  agentDeviceId String?         @db.Char(36)
+  operationId   String          @unique @db.Char(36) // idempotency id sent to the agent
+  attempt       Int
+  status        ExecutionStatus @default(DISPATCHED)
+  approvalHash  String?         @db.Char(64)
+  output        Json?
+  error         String?         @db.VarChar(1000)
+  dispatchedAt  DateTime        @default(now()) @db.DateTime(3)
+  finishedAt    DateTime?       @db.DateTime(3)
+  task          Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  step          TaskStep        @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  agentDevice   AgentDevice?    @relation(fields: [agentDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([stepId, attempt])
+}
+
+enum EvidenceOutcome {
+  PASS
+  FAIL
+  INCONCLUSIVE
+}
+
+model VerificationEvidence {
+  id          String          @id @default(uuid()) @db.Char(36)
+  taskId      String          @db.Char(36)
+  criterion   String          @db.VarChar(500)
+  kind        String          @db.VarChar(64) // file_content_equals, file_exists, page_contains_text, ...
+  outcome     EvidenceOutcome
+  expected    String?         @db.Text
+  actual      String?         @db.Text
+  sha256      String?         @db.Char(64)
+  storagePath String?         @db.VarChar(1000) // large artefacts live in protected local storage
+  source      String          @db.VarChar(50)   // "agent" | "server"
+  isSimulated Boolean         @default(false)
+  createdAt   DateTime        @default(now()) @db.DateTime(3)
+  task        Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+// ---------------------------------------------------------------- approvals
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  SUPERSEDED
+}
+
+model ApprovalRequest {
+  id           String          @id @default(uuid()) @db.Char(36)
+  taskId       String          @db.Char(36)
+  stepId       String          @db.Char(36)
+  actionHash   String          @db.Char(64) // sha256 over the exact operation + parameters
+  operation    String          @db.VarChar(64)
+  target       String          @db.VarChar(1000)
+  summary      String          @db.Text
+  consequences String          @db.Text
+  riskLevel    RiskLevel
+  status       ApprovalStatus  @default(PENDING)
+  expiresAt    DateTime        @db.DateTime(3)
+  createdAt    DateTime        @default(now()) @db.DateTime(3)
+  task         Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  step         TaskStep        @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  decision     ApprovalDecision?
+
+  @@index([taskId, status])
+  @@index([status, expiresAt])
+  @@index([stepId, actionHash])
+}
+
+model ApprovalDecision {
+  id          String         @id @default(uuid()) @db.Char(36)
+  requestId   String         @unique @db.Char(36)
+  userId      String         @db.Char(36)
+  decision    ApprovalStatus // APPROVED | REJECTED
+  actionHash  String         @db.Char(64)
+  comment     String?        @db.VarChar(500)
+  channel     String         @db.VarChar(20) // "web" | "desktop"; voice is never accepted
+  createdAt   DateTime       @default(now()) @db.DateTime(3)
+  request     ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+// ---------------------------------------------------------------- agents
+
+enum DeviceStatus {
+  ACTIVE
+  REVOKED
+}
+
+model AgentDevice {
+  id            String       @id @default(uuid()) @db.Char(36)
+  ownerId       String       @db.Char(36)
+  name          String       @db.VarChar(100)
+  hostname      String       @db.VarChar(255)
+  osVersion     String?      @db.VarChar(100)
+  agentVersion  String?      @db.VarChar(50)
+  tokenHash     String       @unique @db.Char(64)
+  status        DeviceStatus @default(ACTIVE)
+  capabilities  Json?
+  allowedRoots  Json?        // root names reported by the agent's local configuration
+  lastResources Json?
+  lastSeenAt    DateTime?    @db.DateTime(3)
+  createdAt     DateTime     @default(now()) @db.DateTime(3)
+  revokedAt     DateTime?    @db.DateTime(3)
+  owner         User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  sessions      AgentSession[]
+  tasks         Task[]
+  executions    TaskExecution[]
+
+  @@index([ownerId, status])
+}
+
+model AgentSession {
+  id          String      @id @default(uuid()) @db.Char(36)
+  deviceId    String      @db.Char(36)
+  remoteAddr  String?     @db.VarChar(64)
+  connectedAt DateTime    @default(now()) @db.DateTime(3)
+  endedAt     DateTime?   @db.DateTime(3)
+  endReason   String?     @db.VarChar(255)
+  device      AgentDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, endedAt])
+}
+
+model PairingCode {
+  id         String    @id @default(uuid()) @db.Char(36)
+  userId     String    @db.Char(36)
+  codeHash   String    @unique @db.Char(64)
+  expiresAt  DateTime  @db.DateTime(3)
+  usedAt     DateTime? @db.DateTime(3)
+  createdAt  DateTime  @default(now()) @db.DateTime(3)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------- AI models
+
+model ModelConfig {
+  id            String   @id @default(uuid()) @db.Char(36)
+  name          String   @unique @db.VarChar(100)
+  provider      String   @db.VarChar(32) // "ollama" | "openai_compatible" | "anthropic"
+  model         String   @db.VarChar(100)
+  endpoint      String   @db.VarChar(500)
+  isLocal       Boolean
+  enabled       Boolean  @default(true)
+  maxComplexity Int      @default(3) // 1..5
+  latencyClass  Int      @default(2) // 1 fast .. 3 slow
+  costPer1kTokens Decimal @default(0) @db.Decimal(10, 5)
+  capabilities  Json     // ["planning","vision","ocr"]
+  secretRef     String?  @db.VarChar(100) // name of the DPAPI-protected secret, never the secret
+  createdAt     DateTime @default(now()) @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @db.DateTime(3)
+}
+
+// ---------------------------------------------------------------- policy & settings
+
+enum PolicyKind {
+  FOLDER
+  WEBSITE
+  APPLICATION
+  ACTION
+}
+
+enum PolicyEffect {
+  ALLOW
+  DENY
+  REQUIRE_APPROVAL
+}
+
+model PermissionPolicy {
+  id        String       @id @default(uuid()) @db.Char(36)
+  userId    String       @db.Char(36)
+  kind      PolicyKind
+  value     String       @db.VarChar(500)
+  effect    PolicyEffect
+  note      String?      @db.VarChar(255)
+  createdAt DateTime     @default(now()) @db.DateTime(3)
+  revokedAt DateTime?    @db.DateTime(3)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind, revokedAt])
+}
+
+model UserPreference {
+  userId    String   @db.Char(36)
+  key       String   @db.VarChar(64)
+  value     Json
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, key])
+}
+
+model SystemState {
+  id                Int       @id @default(1)
+  emergencyStop     Boolean   @default(false)
+  emergencyStopAt   DateTime? @db.DateTime(3)
+  emergencyStopBy   String?   @db.Char(36)
+  queueEnabled      Boolean   @default(true)
+  updatedAt         DateTime  @updatedAt @db.DateTime(3)
+}
+
+// ---------------------------------------------------------------- memory & skills
+
+model WorkflowSkill {
+  id               String    @id @default(uuid()) @db.Char(36)
+  userId           String    @db.Char(36)
+  name             String    @db.VarChar(100)
+  description      String    @db.VarChar(500)
+  plan             Json
+  successCriteria  Json
+  enabled          Boolean   @default(true)
+  validationStatus String    @default("UNVALIDATED") @db.VarChar(20) // VALID | INVALID | UNVALIDATED
+  validationError  String?   @db.VarChar(1000)
+  lastValidatedAt  DateTime? @db.DateTime(3)
+  useCount         Int       @default(0)
+  sourceTaskId     String?   @db.Char(36)
+  createdAt        DateTime  @default(now()) @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @db.DateTime(3)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks            Task[]
+
+  @@unique([userId, name])
+}
+
+model MemoryRecord {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String   @db.Char(36)
+  kind      String   @db.VarChar(32) // preference | fact | recovery_strategy | task_summary
+  content   String   @db.Text
+  source    String?  @db.VarChar(100)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
+}
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Char(36)
+  userId    String    @db.Char(36)
+  kind      String    @db.VarChar(32)
+  title     String    @db.VarChar(200)
+  body      String    @db.VarChar(1000)
+  link      String?   @db.VarChar(300)
+  readAt    DateTime? @db.DateTime(3)
+  createdAt DateTime  @default(now()) @db.DateTime(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+// ---------------------------------------------------------------- audit & backups
+
+model AuditEvent {
+  id         BigInt   @id @default(autoincrement())
+  actorType  String   @db.VarChar(16) // USER | AGENT | SYSTEM
+  actorId    String?  @db.VarChar(36)
+  action     String   @db.VarChar(64)
+  targetType String?  @db.VarChar(32)
+  targetId   String?  @db.VarChar(36)
+  taskId     String?  @db.Char(36)
+  outcome    String   @db.VarChar(16) // SUCCESS | FAILURE | DENIED | INFO
+  details    Json?    // always passed through the redactor first
+  createdAt  DateTime @default(now()) @db.DateTime(3)
+
+  @@index([taskId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
+}
+
+model ConfigBackup {
+  id           String    @id @default(uuid()) @db.Char(36)
+  kind         String    @db.VarChar(16) // database | config
+  filePath     String    @db.VarChar(1000)
+  sizeBytes    BigInt
+  sha256       String    @db.Char(64)
+  createdById  String?   @db.Char(36)
+  restoreTestedAt DateTime? @db.DateTime(3)
+  restoreTestResult String? @db.VarChar(1000)
+  createdAt    DateTime  @default(now()) @db.DateTime(3)
+
+  @@index([kind, createdAt])
+}
+
+// ---------------------------------------------------------------- integrations (FR-17)
+
+enum IntegrationKind {
+  REST
+  MCP
+}
+
+/// An administrator-approved external service. Plans may only call registered, enabled
+/// integrations, within the allowed paths (REST) or tools (MCP). Credentials stay in the
+/// AI service's DPAPI store; only the secret's name is kept here.
+model Integration {
+  id           String          @id @default(uuid()) @db.Char(36)
+  name         String          @unique @db.VarChar(32)
+  kind         IntegrationKind
+  description  String          @default("") @db.VarChar(500)
+  baseUrl      String          @db.VarChar(500)
+  allowedPaths Json // REST: allowed path prefixes, e.g. ["/v1/forecast"]
+  allowedTools Json // MCP: allowed tool names
+  authHeader   String?         @db.VarChar(64) // e.g. "Authorization" or "X-API-Key"
+  authScheme   String?         @db.VarChar(32) // e.g. "Bearer"; empty sends the secret as-is
+  secretRef    String?         @db.VarChar(100)
+  enabled      Boolean         @default(true)
+  createdById  String?         @db.Char(36)
+  createdAt    DateTime        @default(now()) @db.DateTime(3)
+  updatedAt    DateTime        @updatedAt @db.DateTime(3)
+}

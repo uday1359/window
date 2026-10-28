@@ -1,0 +1,17 @@
+# Python dependencies for ai-service and agent (pinned). Install into .venv:
+#   python -m venv .venv && .venv\Scripts\python -m pip install -r requirements-dev.txt
+# ai-service
+fastapi==0.118.0
+uvicorn==0.37.0
+httpx==0.28.1
+pydantic==2.11.9
+# agent
+websockets==15.0.1
+psutil==7.1.0
+pywinauto==0.6.9
+playwright==1.55.0
+mss==10.1.0
+# tooling
+pytest==8.4.2
+pytest-asyncio==1.2.0
+ruff==0.13.2

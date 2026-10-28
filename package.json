@@ -1,0 +1,32 @@
+{
+  "name": "winagent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Windows 11 AI Desktop-Control Agent",
+  "workspaces": [
+    "server",
+    "web",
+    "electron"
+  ],
+  "scripts": {
+    "setup:env": "node scripts/setup-env.mjs",
+    "db:migrate": "npm run prisma:migrate --workspace server",
+    "dev:server": "npm run start:dev --workspace server",
+    "dev:web": "npm run dev --workspace web",
+    "build": "npm run build --workspace server && npm run build --workspace web",
+    "lint": "npm run lint --workspace server && npm run lint --workspace web",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web",
+    "test": "npm run test --workspace server && npm run test --workspace web",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  },
+  "allowScripts": {
+    "prisma@7.10.1": true,
+    "@prisma/engines@7.10.1": true
+  },
+  "overrides": {
+    "multer": "2.5.0"
+  }
+}
