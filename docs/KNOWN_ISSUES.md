@@ -4,7 +4,7 @@ Status as of 2026-10-28. See [REQUIREMENTS_TRACEABILITY.md](REQUIREMENTS_TRACEAB
 
 ## Not yet validated by a test run
 
-All 206 automated tests passed on 2026-10-28 (docs/TESTING.md). The following have no passing run yet:
+All 208 automated tests passed on 2026-10-28 (docs/TESTING.md). The following have no passing run yet:
 
 - **Update / rollback lifecycle** (`scripts\test-lifecycle.ps1`): `install.ps1` passed in a sandbox, but the full lifecycle needs about 4 GB of free memory. Run `scripts\validate.ps1 -IncludeLifecycle` on a larger machine.
 - **TLS remote access** (`scripts\new-tls-cert.ps1`, `TLS_*` settings, agent `ca_file`).

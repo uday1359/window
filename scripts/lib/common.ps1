@@ -21,7 +21,7 @@ $script:ReleasesDir = Join-Path $script:Root 'backups\releases'
 $script:PreservedRootDirs = @('backups', 'logs', 'data', 'storage')
 # Never source code wherever they appear, so they are excluded by name.
 $script:PreservedDirs = @('node_modules', '.venv', '.git', 'dist', 'generated', 'test-results', 'playwright-report', '.run', '__pycache__', '.pytest_cache', '.ruff_cache')
-$script:PreservedFiles = @('.env', '.env.dbcreds', '*.pem', '*.key', '*.rdp')
+$script:PreservedFiles = @('.env', '.env.dbcreds', 'credentials.env', '*.pem', '*.key', '*.rdp')
 
 function Write-Step([string]$Message) { Write-Host "==> $Message" -ForegroundColor Cyan }
 function Write-Ok([string]$Message) { Write-Host "    $Message" -ForegroundColor Green }
@@ -66,6 +66,23 @@ function Read-EnvFile([string]$Path) {
 
 function Get-ServerEnv { Read-EnvFile (Join-Path $script:Root 'server\.env') }
 
+# credentials.env (see credentials.env.example and README "Credentials"). WINAGENT_CREDENTIALS_FILE
+# overrides the location (setup-windows.cmd points it at the folder the .cmd was started from).
+function Get-CredentialsPath {
+  if ($env:WINAGENT_CREDENTIALS_FILE) { return $env:WINAGENT_CREDENTIALS_FILE }
+  return (Join-Path $script:Root 'credentials.env')
+}
+
+# A credential from the environment or credentials.env; stops with instructions when it is missing.
+function Get-RequiredCredential([string]$Name, [string]$Purpose) {
+  $value = [Environment]::GetEnvironmentVariable($Name)
+  if (-not $value) { $value = (Read-EnvFile (Get-CredentialsPath))[$Name] }
+  if (-not $value) {
+    throw "$Name is missing. $Purpose Copy credentials.env.example to credentials.env in the project folder, set $Name=..., then run this again (README: Credentials)."
+  }
+  return $value
+}
+
 function Get-Ports {
   $server = Get-ServerEnv
   $ai = Read-EnvFile (Join-Path $script:Root 'ai-service\.env')
@@ -92,10 +109,9 @@ function Get-DbInfo {
 
 function Get-MySqlBin {
   $dir = (Get-ServerEnv)['MYSQL_BIN_DIR']
-  if (-not $dir) { $dir = 'C:/Program Files/MySQL/MySQL Server 8.0/bin' }
-  if (Test-Path (Join-Path $dir 'mysql.exe')) { return $dir }
-  # Fresh machines usually have a newer version (8.4 LTS, 9.x): use the newest installed one.
-  $installed = Get-ChildItem 'C:\Program Files\MySQL' -Directory -Filter 'MySQL Server *' -ErrorAction SilentlyContinue |
+  if ($dir -and (Test-Path (Join-Path $dir 'mysql.exe'))) { return $dir }
+  # The newest installed MySQL Server (8.0, 8.4 LTS, 9.x) under this machine's Program Files folder.
+  $installed = Get-ChildItem (Join-Path $env:ProgramFiles 'MySQL') -Directory -Filter 'MySQL Server *' -ErrorAction SilentlyContinue |
     Where-Object { Test-Path (Join-Path $_.FullName 'bin\mysql.exe') } |
     Sort-Object { [version]($_.Name -replace '^MySQL Server ', '') } -Descending |
     Select-Object -First 1

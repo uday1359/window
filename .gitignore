@@ -32,3 +32,6 @@ e2e/.run/
 
 # Generated Prisma client (npm run prisma:generate)
 server/src/generated/
+
+# Local credentials (see credentials.env.example)
+credentials.env

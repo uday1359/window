@@ -1,6 +1,6 @@
 # Testing
 
-All commands run from the project root (`C:\...\WINDOW`) in PowerShell unless noted.
+All commands run from the project root (the folder containing `package.json`) in PowerShell unless noted.
 Case counts below were obtained by reading the test files (`it.each` / `parametrize`
 rows counted individually); they are not run results.
 
@@ -8,7 +8,7 @@ rows counted individually); they are not run results.
 
 | Suite | Location | Runner | Cases | Needs |
 |---|---|---|---|---|
-| Server unit | `server/src/**/*.spec.ts` | Jest (project `unit`) | 71 | nothing |
+| Server unit | `server/src/**/*.spec.ts` | Jest (project `unit`) | 73 | nothing |
 | Server integration | `server/test/*.int.ts` | Jest (project `integration`) | 33 | MySQL `winagent_test`, Python venv (real AI service), MySQL client binaries |
 | Dashboard | `web/src/test/*.test.tsx` | Vitest + jsdom | 10 | nothing |
 | AI service | `ai-service/tests` | pytest | 51 | Python venv (1 test Windows-only) |
@@ -40,7 +40,7 @@ Python test configuration is in `ai-service/pyproject.toml` and `agent/pyproject
 `integration` with `rootDir: test`, regex `.int.ts`, global setup/teardown and a 60 s
 per-test timeout from `server/test/setup-timeout.ts`).
 
-## Server unit tests (71 cases)
+## Server unit tests (73 cases)
 
 | File | Cases | Covers |
 |---|---|---|
@@ -159,13 +159,13 @@ MySQL 8.0 and Microsoft Edge. Every suite was run separately (the PC has 8 GB RA
 
 | Suite | Command | Result |
 |---|---|---|
-| Server unit | `npx jest --selectProjects unit` (in `server`) | 71 passed |
+| Server unit | `npx jest --selectProjects unit` (in `server`) | 73 passed |
 | Server integration (MySQL, real AI service, simulated agent) | `npx jest --runInBand --selectProjects integration` | 33 passed |
 | Dashboard | `npm run test --workspace web` | 10 passed |
 | AI service | `cd ai-service; ..\.venv\Scripts\python -m pytest` | 51 passed (1 third-party deprecation warning from Starlette's test client) |
 | Agent (real files, headless Edge, UI Automation, Windows OCR) | `cd agent; ..\.venv\Scripts\python -m pytest -rs` | 39 passed, none skipped |
 | End-to-end (real agent, built stack) | `npm run test:e2e` | 2 passed |
-| **Total** | | **206 passed, 0 failed** |
+| **Total** | | **208 passed, 0 failed** |
 | Lint / typecheck / Python lint / PowerShell syntax | `npm run lint`, `npm run typecheck`, `ruff check ai-service agent`, `scripts\lib\check-ps-syntax.ps1` | clean |
 | Prisma schema and migrations | `prisma validate`; all 4 migrations applied by the integration and e2e setups | valid / applied |
 | Build | `npm run build` | succeeded |

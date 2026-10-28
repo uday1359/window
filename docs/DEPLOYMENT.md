@@ -22,8 +22,9 @@ What they do:
 - **install.ps1** checks prerequisites, runs `npm ci`, creates `.venv` and installs the Python
   packages. On first install it creates the MySQL user `winagent` with a **random password**,
   stored only in `server\.env`, and the `winagent`, `winagent_shadow` and `winagent_test`
-  databases. This needs the MySQL root password once: set `WINAGENT_MYSQL_ROOT_PASSWORD` for
-  unattended runs, or type it at the secure prompt. It is never stored. The script then writes
+  databases. This needs the MySQL root password once, read from `credentials.env`
+  (`MYSQL_ROOT_PASSWORD=`; README: Credentials). There is no prompt: if it is missing, the script
+  stops and says what to fill in. The script then writes
   the `.env` files, migrates and builds. Re-running keeps existing configuration and data.
 - **start.ps1** runs the AI service and the built server (which also serves the dashboard) in
   the background. Output goes to `logs\<component>.log`; process IDs go to `data\run.json`. It
@@ -47,7 +48,7 @@ The numbered sections below describe the same work by hand, for troubleshooting 
 - Node.js 22+ and npm 11 (tested with Node 24.22.1)
 - Python 3.11-3.13 (tested with 3.13.17; 3.14+ not supported yet: no prebuilt wheels for the pinned packages)
 - MySQL 8.0 server on `127.0.0.1:3306`, plus client tools (`mysql.exe`, `mysqldump.exe`;
-  default path `C:/Program Files/MySQL/MySQL Server 8.0/bin`) for backups
+  found automatically under the Program Files folder) for backups
 - Microsoft Edge (Playwright browser channel for the agent and e2e tests)
 - Optional: Ollama with a local model
 
@@ -213,10 +214,14 @@ Backups (admin only, dashboard **Diagnostics**, or API):
 There is **no restore endpoint**. Manual restore (stop the server first):
 
 ```powershell
+# Run from the project folder. mysql.exe is the newest MySQL Server under Program Files.
+$mysql = (Get-ChildItem "$env:ProgramFiles\MySQL\MySQL Server *\bin\mysql.exe" | Select-Object -Last 1).FullName
 $env:MYSQL_PWD = '<password>'   # avoid putting it on the command line
-& "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u winagent -h 127.0.0.1 --default-character-set=utf8mb4 winagent -e "source C:/path/to/backups/winagent-db-<time>.sql"
+& $mysql -u winagent -h 127.0.0.1 --default-character-set=utf8mb4 winagent -e "source backups/winagent-db-<time>.sql"
 Remove-Item Env:MYSQL_PWD
 ```
+
+To restore a whole release (code, configuration and database), prefer `scripts\rollback.ps1`.
 
 (PowerShell has no `<` input redirection, hence `source`.) This manual procedure is
 NOT VALIDATED; only the scratch-database verification is covered by tests.
@@ -250,7 +255,7 @@ By default everything listens on `127.0.0.1`. To let an agent on another PC conn
    **for trusted source addresses only**.
 3. `scripts\stop.ps1`, then `scripts\start.ps1`. The server now serves `https://` and `wss://`.
 4. Copy `server.pem` (never the `.pfx`) to the agent PC and pair:
-   `python -m winagent pair --code <CODE> --server https://<HostName>:3710 --ca-file C:\path\server.pem`
+   `python -m winagent pair --code <CODE> --server https://<HostName>:3710 --ca-file .\server.pem`
 5. Browsers warn about a self-signed certificate. For production, set `TLS_PFX_FILE` /
    `TLS_PFX_PASSPHRASE` to a certificate from your organisation's CA instead.
 

@@ -23,6 +23,15 @@ from .secrets_store import NAME_RE, SecretStore
 log = logging.getLogger("winagent.ai")
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def project_path(value: str) -> Path:
+    """Relative paths in configuration are relative to the project folder, not the current directory."""
+    p = Path(value)
+    return p if p.is_absolute() else PROJECT_ROOT / p
+
+
 def _load_env_file() -> None:
     env = Path(__file__).resolve().parent.parent / ".env"
     if not env.exists() or os.environ.get("WINAGENT_SKIP_ENV_FILE"):
@@ -40,7 +49,7 @@ def create_app(token: str | None = None, store: SecretStore | None = None) -> Fa
     service_token = token or os.environ.get("AI_SERVICE_TOKEN", "")
     if len(service_token) < 32:
         raise RuntimeError("AI_SERVICE_TOKEN must be set (at least 32 characters)")
-    secret_store = store or SecretStore(Path(os.environ.get("SECRET_STORE_PATH", "data/secrets.dpapi")))
+    secret_store = store or SecretStore(project_path(os.environ.get("SECRET_STORE_PATH", "data/secrets.dpapi")))
     ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 
     app = FastAPI(title="WinAgent AI service", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)

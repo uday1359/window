@@ -12,8 +12,9 @@
      installs npm and Python packages, creates the database user and databases, migrates
      and builds (scripts\install.ps1). With -Validate it then runs every test.
 
-  Asks for one password: the MySQL root password (the new one on a fresh machine, the
-  existing one otherwise). It is never written to disk in plain text.
+  No prompts for credentials: put MYSQL_ROOT_PASSWORD in credentials.env first (copy
+  credentials.env.example; README: Credentials). If the file is missing, the setup creates an
+  empty one and stops so you can fill it in.
 
   Run it from a NORMAL PowerShell window (not "Run as administrator"); it asks for admin
   rights only for the software step. The local agent refuses to run elevated.
@@ -41,7 +42,7 @@ param(
   [switch]$WithOllama,
   # Internal: the elevated software step.
   [ValidateSet('All', 'Software')][string]$Phase = 'All',
-  [string]$SecretFile,
+  [string]$CredentialsFile,
   [string]$LogFile
 )
 
@@ -68,6 +69,37 @@ function Update-SessionPath {
 }
 
 function Test-Command([string]$Name) { [bool](Get-Command $Name -ErrorAction SilentlyContinue) }
+
+# ------------------------------------------------------------------ credentials.env (README: Credentials)
+function Read-Credentials([string]$Path) {
+  $values = @{}
+  if (-not $Path -or -not (Test-Path $Path)) { return $values }
+  foreach ($line in Get-Content -LiteralPath $Path -Encoding UTF8) {
+    if ($line -match '^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$') { $values[$Matches[1]] = $Matches[2] }
+  }
+  return $values
+}
+
+# setup-windows.cmd sets WINAGENT_CREDENTIALS_FILE to the folder it was started from; otherwise look
+# next to this script, in the current folder and in the project folder.
+function Find-CredentialsFile {
+  $candidates = @($env:WINAGENT_CREDENTIALS_FILE, (Join-Path (Split-Path -Parent $PSCommandPath) 'credentials.env'), (Join-Path (Get-Location) 'credentials.env'))
+  if ($ProjectDir) { $candidates += (Join-Path $ProjectDir 'credentials.env') }
+  $candidates += (Join-Path $HOME 'WINDOW\credentials.env')
+  foreach ($c in $candidates) { if ($c -and (Test-Path $c)) { return (Resolve-Path $c).Path } }
+  return $null
+}
+
+function New-CredentialsTemplate {
+  $path = if ($env:WINAGENT_CREDENTIALS_FILE) { $env:WINAGENT_CREDENTIALS_FILE } else { Join-Path (Get-Location) 'credentials.env' }
+  Set-Content -Path $path -Encoding ASCII -Value @(
+    '# WinAgent credentials (README: Credentials). Never committed or uploaded.',
+    '# REQUIRED: MySQL root password. New computer: the setup makes THIS the root password.',
+    '# MySQL already installed: your existing root password. No quotes.',
+    'MYSQL_ROOT_PASSWORD='
+  )
+  return $path
+}
 
 function Get-File([string]$Url, [string]$Name) {
   New-Item -ItemType Directory -Force -Path $Downloads | Out-Null
@@ -179,7 +211,7 @@ function Install-Software([string]$RootPassword) {
     Write-Ok "service $($service.Name) already exists and is running; your existing root password will be used"
   } else {
     # Never configure MySQL with an empty root password.
-    if (-not $RootPassword) { throw 'The MySQL root password was not received by the administrator step. Run this script from an account that is a local administrator.' }
+    if (-not $RootPassword) { throw 'MYSQL_ROOT_PASSWORD could not be read from credentials.env by the administrator step. Make sure the file is readable by the administrator account, then run the setup again.' }
     if (-not (Test-Path "$MySqlBase\bin\mysqld.exe")) {
       $f = Get-File "https://cdn.mysql.com/Downloads/MySQL-8.4/mysql-$MySqlVersion-winx64.msi" "mysql-$MySqlVersion-winx64.msi"
       Assert-Genuine $f 'Oracle' 'MD5' $MySqlMd5 -HashIsEnough
@@ -217,15 +249,7 @@ if ($Phase -eq 'Software') {
   if ($LogFile) { Start-Transcript -Path $LogFile -Force | Out-Null }
   $exitCode = 0
   try {
-    $root = ''
-    # Readable only if UAC elevated this same Windows user (DPAPI); otherwise stays empty.
-    if ($SecretFile -and (Test-Path $SecretFile)) {
-      try {
-        $s = Get-Content $SecretFile | ConvertTo-SecureString
-        $root = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
-      } catch { $root = '' }
-    }
-    Install-Software $root
+    Install-Software (Read-Credentials $CredentialsFile)['MYSQL_ROOT_PASSWORD']
   } catch {
     Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
     $exitCode = 1
@@ -241,9 +265,21 @@ Write-Step 'WinAgent setup'
 $caption = (Get-CimInstance Win32_OperatingSystem).Caption
 Write-Ok "$caption, PowerShell $($PSVersionTable.PSVersion)"
 
-$secure = Read-Host 'MySQL root password (new password on a fresh machine, or your existing one)' -AsSecureString
-$rootPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
-if (-not $rootPassword) { throw 'A MySQL root password is required.' }
+# Credentials come from credentials.env, filled in before starting (README: Credentials). No prompts.
+$credentialsPath = Find-CredentialsFile
+if (-not $credentialsPath) {
+  $credentialsPath = New-CredentialsTemplate
+  Write-Warn "Created $credentialsPath"
+  Write-Warn 'Open it, set MYSQL_ROOT_PASSWORD=... (the new root password on a fresh computer, or your existing MySQL root password), save, and run the setup again.'
+  exit 2
+}
+$rootPassword = (Read-Credentials $credentialsPath)['MYSQL_ROOT_PASSWORD']
+if (-not $rootPassword) {
+  Write-Warn "MYSQL_ROOT_PASSWORD is empty in $credentialsPath."
+  Write-Warn 'Set it (the new root password on a fresh computer, or your existing MySQL root password), save, and run the setup again.'
+  exit 2
+}
+Write-Ok "credentials: $credentialsPath"
 
 # --- 1. software
 Update-SessionPath
@@ -259,14 +295,10 @@ if ($missing.Count -eq 0) {
 } else {
   Write-Step "Installing: $($missing -join ', ') (approve the administrator prompt)"
   New-Item -ItemType Directory -Force -Path $Downloads | Out-Null
-  # DPAPI-encrypted for this Windows user; the elevated step runs as the same user.
-  $secretFile = Join-Path $Downloads 'root.secret'
   $log = Join-Path $Downloads 'software.log'
-  $secure | ConvertFrom-SecureString | Set-Content $secretFile
-  try {
-    $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Phase Software -SecretFile `"$secretFile`" -LogFile `"$log`""
-    $p = Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait -PassThru
-  } finally { Remove-Item $secretFile -Force -ErrorAction SilentlyContinue }
+  # The administrator step reads the same credentials file; the password is never passed on a command line.
+  $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Phase Software -CredentialsFile `"$credentialsPath`" -LogFile `"$log`""
+  $p = Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait -PassThru
   if (Test-Path $log) { Get-Content $log | Where-Object { $_ -match '^(==>|    |ERROR)' } | ForEach-Object { Write-Host $_ } }
   if ($p.ExitCode -ne 0) { throw "Software installation failed (see $log)." }
 }
@@ -290,14 +322,11 @@ if (Test-Path (Join-Path $ProjectDir '.git')) {
 }
 
 Write-Step 'Installing packages, database and build (scripts\install.ps1)'
-$env:WINAGENT_MYSQL_ROOT_PASSWORD = $rootPassword
-try {
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectDir 'scripts\install.ps1')
-  $installCode = $LASTEXITCODE
-} finally {
-  Remove-Item Env:WINAGENT_MYSQL_ROOT_PASSWORD -ErrorAction SilentlyContinue
-  $rootPassword = $null
-}
+$rootPassword = $null
+# install.ps1 reads MYSQL_ROOT_PASSWORD from the same credentials file.
+$env:WINAGENT_CREDENTIALS_FILE = $credentialsPath
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectDir 'scripts\install.ps1')
+$installCode = $LASTEXITCODE
 if ($installCode -ne 0) { throw 'scripts\install.ps1 failed; see the messages above.' }
 
 function Install-DeveloperTools([string]$Dir) {

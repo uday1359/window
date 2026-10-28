@@ -7,7 +7,7 @@ approval; a local Windows agent executes the authorised operations; and the serv
 the real outcome with evidence before calling anything "complete".
 
 > Status: see [docs/REQUIREMENTS_TRACEABILITY.md](docs/REQUIREMENTS_TRACEABILITY.md) and
-> [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md). All 206 automated tests pass (2026-10-28), including
+> [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md). All 208 automated tests pass (2026-10-28), including
 > the mandatory acceptance task (create, read back and verify `hello.txt`) end-to-end with the
 > **real** agent, Windows OCR, research, screenshot attachments, integrations (against simulated
 > servers), deadlines and offline retries. Not yet validated by a test run:
@@ -34,8 +34,9 @@ It fetches `setup-windows.ps1` from GitHub by itself and then:
    Python packages, creates the database user and databases, migrates and builds.
 3. **Developer tools**: VS Code plus the recommended extensions from `.vscode/extensions.json`.
 
-It asks for the MySQL root password once: the new password on a fresh machine, or your
-existing one.
+**Before you double-click:** create `credentials.env` next to `setup-windows.cmd` (see
+[Credentials](#credentials)). The setup never prompts for passwords. If the file is missing,
+it creates an empty one and stops so you can fill it in.
 
 The same from PowerShell, with options:
 
@@ -45,6 +46,24 @@ powershell -ExecutionPolicy Bypass -File setup-windows.ps1 -Developer -Validate 
 powershell -ExecutionPolicy Bypass -File setup-windows.ps1 -Developer -WithOllama # + local AI model (~2 GB)
 powershell -ExecutionPolicy Bypass -File setup-windows.ps1                        # runtime only, no developer tools
 ```
+
+## Credentials
+
+Fill these in **before** running the setup. Only the first one goes into a file; everything else
+is created for you or entered later in the dashboard, where it is stored encrypted.
+
+| Credential | Needed for | Where to put it | When |
+|---|---|---|---|
+| **MySQL root password** | Creating (or repairing) the WinAgent database user. On a new computer the setup installs MySQL and makes this the root password. | `credentials.env`, line `MYSQL_ROOT_PASSWORD=…`, in the project folder, or next to `setup-windows.cmd` on a new computer. Copy `credentials.env.example` to start. | Before the first install. You can remove it after a successful install. |
+| WinAgent database user (`winagent`) | Normal running | *Nothing to do*: `scripts\install.ps1` generates a random password and writes it to `server\.env`. | Automatic |
+| Service token (server ↔ AI service) | Normal running | *Nothing to do*: generated into `server\.env` and `ai-service\.env`. | Automatic |
+| First dashboard administrator (e-mail + password) | Signing in to the dashboard | Created on the dashboard's first-run page (`http://127.0.0.1:3710`). | After `scripts\start.ps1` |
+| Agent pairing code | Connecting the Windows agent | Dashboard → **Agent devices → Create pairing code**, then in the `agent` folder: `..\.venv\Scripts\python -m winagent pair --code <CODE>`. Its device token is stored encrypted (Windows DPAPI). | After signing in |
+| Cloud AI API keys (OpenAI-compatible, Anthropic), *optional* | Cloud models | Dashboard → **AI & models → Secrets**. Stored encrypted with Windows DPAPI; never in a file in the project. | Only if you use cloud models |
+| Integration API keys, *optional* | REST/MCP integrations | Dashboard → **AI & models → Secrets**, then name the secret on the integration (Policies → Integrations). | Only if you use integrations |
+
+`credentials.env`, `server\.env` and `ai-service\.env` are git-ignored: they are never committed
+or uploaded, and `scripts\update.ps1` never overwrites them.
 
 ## Project layout
 

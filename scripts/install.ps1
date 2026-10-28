@@ -8,7 +8,7 @@
   2. Installs Node and Python dependencies.
   3. On first install, creates the MySQL user 'winagent' with a random password and the
      winagent, winagent_shadow and winagent_test databases (needs the MySQL root password,
-     read from WINAGENT_MYSQL_ROOT_PASSWORD or prompted securely; never stored).
+     read from credentials.env (MYSQL_ROOT_PASSWORD; README: Credentials); no prompt, never stored).
   4. Writes server\.env and ai-service\.env (scripts\setup-env.mjs), migrates and builds.
 
   Safe to re-run: existing configuration and data are kept.
@@ -124,10 +124,11 @@ if (-not (Test-Path $script:Python)) {
 Invoke-Native -FilePath $script:Python -Arguments @('-m', 'pip', 'install', '--disable-pip-version-check', '-q', '-r', 'requirements-dev.txt')
 
 # ------------------------------------------------------------------ 3. database + configuration
+# From credentials.env (MYSQL_ROOT_PASSWORD) or, for automation, $env:WINAGENT_MYSQL_ROOT_PASSWORD.
+# Needed only to create or repair the winagent database user; never stored by this script.
 function Read-RootPassword {
   if ($env:WINAGENT_MYSQL_ROOT_PASSWORD) { return $env:WINAGENT_MYSQL_ROOT_PASSWORD }
-  $secure = Read-Host 'MySQL root password (used once, not stored)' -AsSecureString
-  [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
+  Get-RequiredCredential 'MYSQL_ROOT_PASSWORD' 'The MySQL root password is needed once to create the WinAgent database user.'
 }
 
 # Creates (or resets) the winagent user with this password and the three databases.

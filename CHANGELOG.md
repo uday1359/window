@@ -64,3 +64,9 @@ First implementation of the PRD.
 - One-click developer setup: `setup-windows.cmd` works on its own (downloads `setup-windows.ps1`, with a GitHub API fallback when raw.githubusercontent.com is blocked) and runs `-Developer`: VS Code plus the `.vscode/extensions.json` recommendations; optional `-WithOllama`.
 - Added `.vscode/` (recommended extensions, Python interpreter, ESLint working directories, search exclusions) and `.gitattributes` (CRLF for `.cmd`).
 - Project tidied: long documents and architecture PDFs moved to `docs/`; duplicate `PRD.txt` removed; all links updated.
+
+## Portable paths and credentials file (2026-10-28)
+- **No absolute paths:** configuration paths are relative to the project folder (`STORAGE_DIR=storage`, `BACKUP_DIR=backups`, `SECRET_STORE_PATH=data/secrets.dpapi`, `TLS_PFX_FILE=data/tls/server.pfx`) and resolved by the server and AI service. MySQL is found under `%ProgramFiles%\MySQL`; the Windows folder comes from `%SystemRoot%`. `setup-env.mjs` converts existing absolute paths inside the project (including 8.3 short names) to relative ones and drops a `MYSQL_BIN_DIR` that only points at the standard location.
+- **Credentials file instead of prompts:** `credentials.env` (template `credentials.env.example`, git-ignored, never overwritten by updates) holds `MYSQL_ROOT_PASSWORD`; `setup-windows` and `install.ps1` read it and stop with instructions if it is missing. README section "Credentials" lists every credential and where it goes.
+- Orchestrator stops ticking before the database connection closes at shutdown.
+- Tests: 208 passed (server unit 73, integration 33, dashboard 10, AI service 51, agent 39, e2e 2).

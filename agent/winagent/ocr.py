@@ -52,8 +52,11 @@ def recognize(image: Path) -> dict:
     if not image.is_file():
         raise OpError("NOT_FOUND", "image to read does not exist")
     env = {**os.environ, "WINAGENT_OCR_IMAGE": str(image.resolve())}
-    # Full path, so a powershell.exe planted earlier on PATH is never run.
-    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    # Full path from the Windows folder, so a powershell.exe planted earlier on PATH is never run.
+    windows_dir = os.environ.get("SystemRoot") or os.environ.get("windir")
+    if not windows_dir:
+        raise OpError("UNSUPPORTED", "the Windows folder is unknown (SystemRoot is not set)")
+    powershell = Path(windows_dir) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
     try:
         proc = subprocess.run(  # noqa: S603 - constant program and script
             [str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", _SCRIPT],

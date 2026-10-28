@@ -2,7 +2,7 @@
 
 Status values: **DONE**, **PARTIAL**, **NOT DONE**, **N/A**. Source: [PRD.md](PRD.md). Evidence points to code or tests.
 
-**NOT VALIDATED** marks work that has not been proven by a test run. All 206 automated tests passed on 2026-10-28 (docs/TESTING.md); what remains unvalidated is listed per row.
+**NOT VALIDATED** marks work that has not been proven by a test run. All 208 automated tests passed on 2026-10-28 (docs/TESTING.md); what remains unvalidated is listed per row.
 
 | ID | Requirement | Status | Evidence / gap |
 |---|---|---|---|
@@ -52,5 +52,5 @@ Status values: **DONE**, **PARTIAL**, **NOT DONE**, **N/A**. Source: [PRD.md](PR
 | 18 | Database backup and restoration tested | DONE | `mysqldump` + automated restore verification, integration-tested |
 | 19 | Installation, updates and rollback tested | DONE (NOT VALIDATED) | `scripts\install.ps1` passed in an isolated sandbox here; `scripts\test-lifecycle.ps1` (update, rollback, automatic rollback) to be run on the target system |
 | 20 | Electron reuses the web interface | PARTIAL | Loads the same dashboard and compiles on Electron 45; runtime NOT VALIDATED |
-| 21 | Security, recovery and e2e tests pass | DONE | 206 automated tests passed on 2026-10-28, including the real-agent e2e tests (docs/TESTING.md) |
+| 21 | Security, recovery and e2e tests pass | DONE | 208 automated tests passed on 2026-10-28, including the real-agent e2e tests (docs/TESTING.md) |
 | 22 | No unresolved critical security issues | DONE | No known critical or high issues; `npm audit`: 0 production vulnerabilities (8 low, dev-only) |

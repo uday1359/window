@@ -12,7 +12,7 @@
   If any step after the snapshot fails, scripts\rollback.ps1 restores the snapshot.
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File scripts\update.ps1 -Source C:\Downloads\winagent-1.1.0.zip
+  powershell -ExecutionPolicy Bypass -File scripts\update.ps1 -Source ..\winagent-1.1.0.zip
 #>
 [CmdletBinding()]
 param(

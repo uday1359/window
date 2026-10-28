@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@nestjs/common';
 import { AgentDevice, Prisma, Task, TaskStep } from '../generated/prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -33,10 +33,11 @@ function truncateResult(result: OperationResult): Prisma.InputJsonValue {
 }
 
 @Injectable()
-export class OrchestratorService implements OnApplicationBootstrap, OnApplicationShutdown {
+export class OrchestratorService implements OnApplicationBootstrap, OnModuleDestroy, OnApplicationShutdown {
   private readonly logger = new Logger('Orchestrator');
   private timer?: NodeJS.Timeout;
   private ticking = false;
+  private stopping = false;
   private currentTaskId: string | null = null;
   private currentOperation: { deviceId: string; operationId: string } | null = null;
 
@@ -61,6 +62,12 @@ export class OrchestratorService implements OnApplicationBootstrap, OnApplicatio
       this.timer = setInterval(() => void this.tick(), loadConfig().ORCHESTRATOR_TICK_MS);
       this.timer.unref();
     }
+  }
+
+  /** Runs during module teardown, before the database connection closes: no new ticks start. */
+  onModuleDestroy(): void {
+    this.stopping = true;
+    if (this.timer) clearInterval(this.timer);
   }
 
   onApplicationShutdown(): void {
@@ -96,7 +103,7 @@ export class OrchestratorService implements OnApplicationBootstrap, OnApplicatio
   }
 
   async tick(): Promise<void> {
-    if (this.ticking) return;
+    if (this.ticking || this.stopping) return;
     this.ticking = true;
     try {
       const system = await this.prisma.systemState.findUniqueOrThrow({ where: { id: 1 } });

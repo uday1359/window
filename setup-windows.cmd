@@ -3,6 +3,8 @@ rem One-click developer setup of WinAgent on this computer.
 rem Works on its own: if setup-windows.ps1 is not next to this file, it is downloaded from GitHub.
 rem Run it as your normal user (double-click). It asks for administrator approval only to install software.
 setlocal
+rem credentials.env (MYSQL_ROOT_PASSWORD) is read from the folder this file is in. See README: Credentials.
+if not defined WINAGENT_CREDENTIALS_FILE set "WINAGENT_CREDENTIALS_FILE=%~dp0credentials.env"
 set "SCRIPT=%~dp0setup-windows.ps1"
 if not exist "%SCRIPT%" (
   set "SCRIPT=%TEMP%\setup-windows.ps1"

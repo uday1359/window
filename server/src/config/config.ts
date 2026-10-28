@@ -1,6 +1,19 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
+
+/** The project folder (server/src/config or server/dist/config → three levels up). */
+export const PROJECT_ROOT = resolve(__dirname, '..', '..', '..');
+
+/** Newest installed MySQL Server bin folder under %ProgramFiles%\MySQL (8.0, 8.4, 9.x), or '' if none. */
+export function detectMysqlBinDir(): string {
+  const base = join(process.env.ProgramFiles ?? '', 'MySQL');
+  if (!process.env.ProgramFiles || !existsSync(base)) return '';
+  const versions = readdirSync(base)
+    .filter((d) => /^MySQL Server \d+\.\d+$/.test(d) && existsSync(join(base, d, 'bin', 'mysql.exe')))
+    .sort((a, b) => parseFloat(b.slice(13)) - parseFloat(a.slice(13)));
+  return versions.length ? join(base, versions[0], 'bin') : '';
+}
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -12,9 +25,12 @@ const EnvSchema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().positive().default(12),
   SESSION_IDLE_MINUTES: z.coerce.number().positive().default(60),
   WEB_ORIGIN: z.string().default('http://127.0.0.1:5173'),
-  STORAGE_DIR: z.string().min(1),
-  BACKUP_DIR: z.string().min(1),
-  MYSQL_BIN_DIR: z.string().default('C:/Program Files/MySQL/MySQL Server 8.0/bin'),
+  // Paths may be relative: they are resolved against the project folder, so the same .env works
+  // for any Windows user and any install location.
+  STORAGE_DIR: z.string().min(1).default('storage'),
+  BACKUP_DIR: z.string().min(1).default('backups'),
+  /** Defaults to the newest MySQL Server found under %ProgramFiles%\MySQL. */
+  MYSQL_BIN_DIR: z.string().optional(),
   WEB_DIST_DIR: z.string().optional(),
   APPROVAL_TTL_MINUTES: z.coerce.number().positive().default(30),
   /** Upper bound applied to every operation's own timeout. */
@@ -30,9 +46,12 @@ const EnvSchema = z.object({
   PUBLIC_ORIGIN: z.string().url().optional(),
 });
 
-export type AppConfig = z.infer<typeof EnvSchema>;
+export type AppConfig = Omit<z.infer<typeof EnvSchema>, 'MYSQL_BIN_DIR'> & { MYSQL_BIN_DIR: string };
 
 let cached: AppConfig | undefined;
+
+const fromRoot = (p: string): string => (isAbsolute(p) ? p : resolve(PROJECT_ROOT, p));
+const optionalFromRoot = (p: string | undefined): string | undefined => (p ? fromRoot(p) : undefined);
 
 /** Loads server/.env (if present) once, validates it and fails fast on misconfiguration. */
 export function loadConfig(): AppConfig {
@@ -47,7 +66,17 @@ export function loadConfig(): AppConfig {
     const keys = parsed.error.issues.map((i) => i.path.join('.')).join(', ');
     throw new Error(`Invalid server configuration for: ${keys}`);
   }
-  cached = parsed.data;
+  const c = parsed.data;
+  cached = {
+    ...c,
+    STORAGE_DIR: fromRoot(c.STORAGE_DIR),
+    BACKUP_DIR: fromRoot(c.BACKUP_DIR),
+    WEB_DIST_DIR: optionalFromRoot(c.WEB_DIST_DIR),
+    TLS_PFX_FILE: optionalFromRoot(c.TLS_PFX_FILE),
+    TLS_CERT_FILE: optionalFromRoot(c.TLS_CERT_FILE),
+    TLS_KEY_FILE: optionalFromRoot(c.TLS_KEY_FILE),
+    MYSQL_BIN_DIR: c.MYSQL_BIN_DIR || detectMysqlBinDir(),
+  };
   return cached;
 }
 

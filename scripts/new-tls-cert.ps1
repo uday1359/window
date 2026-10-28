@@ -60,7 +60,8 @@ $envPath = Join-Path $script:Root 'server\.env'
 $port = (Get-Ports).Server
 $updates = [ordered]@{
   HOST = $ListenAddress
-  TLS_PFX_FILE = ($pfxPath -replace '\\', '/')
+  # Relative to the project folder, so the configuration does not depend on where it is installed.
+  TLS_PFX_FILE = 'data/tls/server.pfx'
   TLS_PFX_PASSPHRASE = $passphrase
   PUBLIC_ORIGIN = "https://${HostName}:$port"
 }

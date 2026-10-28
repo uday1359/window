@@ -33,7 +33,8 @@ export function applyTestEnv(): void {
     AI_SERVICE_TOKEN: file.AI_SERVICE_TOKEN ?? 'x'.repeat(48),
     STORAGE_DIR: join(scratch, 'storage'),
     BACKUP_DIR: join(scratch, 'backups'),
-    MYSQL_BIN_DIR: file.MYSQL_BIN_DIR ?? 'C:/Program Files/MySQL/MySQL Server 8.0/bin',
+    // Empty = the server finds the newest MySQL Server under the Program Files folder.
+    MYSQL_BIN_DIR: file.MYSQL_BIN_DIR ?? '',
     OPERATION_TIMEOUT_MS: '2000',
     ORCHESTRATOR_TICK_MS: '100',
     LOGIN_RATE_LIMIT_PER_MIN: '1000',
