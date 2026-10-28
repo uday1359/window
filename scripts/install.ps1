@@ -124,28 +124,44 @@ if (-not (Test-Path $script:Python)) {
 Invoke-Native -FilePath $script:Python -Arguments @('-m', 'pip', 'install', '--disable-pip-version-check', '-q', '-r', 'requirements-dev.txt')
 
 # ------------------------------------------------------------------ 3. database + configuration
-$serverEnv = Get-ServerEnv
-if (-not $serverEnv['DATABASE_URL']) {
-  Write-Step 'Creating the MySQL user and databases (first install)'
-  $rootPassword = $env:WINAGENT_MYSQL_ROOT_PASSWORD
-  if (-not $rootPassword) {
-    $secure = Read-Host 'MySQL root password (used once, not stored)' -AsSecureString
-    $rootPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
-  }
-  # URL-safe characters only, so the password needs no escaping in DATABASE_URL.
-  $alphabet = [char[]]'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
-  $bytes = New-Object byte[] 32
-  [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-  $dbPassword = -join ($bytes | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
+function Read-RootPassword {
+  if ($env:WINAGENT_MYSQL_ROOT_PASSWORD) { return $env:WINAGENT_MYSQL_ROOT_PASSWORD }
+  $secure = Read-Host 'MySQL root password (used once, not stored)' -AsSecureString
+  [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
+}
+
+# Creates (or resets) the winagent user with this password and the three databases.
+function Set-DatabaseUser([string]$RootPassword, [string]$DbPassword) {
+  $quoted = $DbPassword.Replace("'", "''")
   $sql = @"
-CREATE USER IF NOT EXISTS 'winagent'@'localhost' IDENTIFIED BY '$dbPassword';
-ALTER USER 'winagent'@'localhost' IDENTIFIED BY '$dbPassword';
+CREATE USER IF NOT EXISTS 'winagent'@'localhost' IDENTIFIED BY '$quoted';
+ALTER USER 'winagent'@'localhost' IDENTIFIED BY '$quoted';
 GRANT ALL PRIVILEGES ON ``winagent%``.* TO 'winagent'@'localhost';
 CREATE DATABASE IF NOT EXISTS winagent CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS winagent_shadow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS winagent_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 "@
-  Invoke-MySqlTool -Tool mysql -User 'root' -Password $rootPassword -InputSql $sql
+  Invoke-MySqlTool -Tool mysql -User 'root' -Password $RootPassword -InputSql $sql
+}
+
+function Test-DatabaseLogin {
+  $db = Get-DbInfo
+  try {
+    Invoke-MySqlTool -Tool mysql -User $db.User -Password $db.Password -DbHost $db.Host -Port $db.Port -InputSql 'SELECT 1;' | Out-Null
+    return $true
+  } catch { return $false }
+}
+
+$serverEnv = Get-ServerEnv
+if (-not $serverEnv['DATABASE_URL']) {
+  Write-Step 'Creating the MySQL user and databases (first install)'
+  $rootPassword = Read-RootPassword
+  # URL-safe characters only, so the password needs no escaping in DATABASE_URL.
+  $alphabet = [char[]]'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+  $bytes = New-Object byte[] 32
+  [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+  $dbPassword = -join ($bytes | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
+  Set-DatabaseUser -RootPassword $rootPassword -DbPassword $dbPassword
   $env:WINAGENT_DB_PASSWORD_URLENC = $dbPassword
   try { Invoke-Native -FilePath 'node.exe' -Arguments @('scripts\setup-env.mjs') }
   finally { Remove-Item Env:WINAGENT_DB_PASSWORD_URLENC -ErrorAction SilentlyContinue }
@@ -155,6 +171,17 @@ CREATE DATABASE IF NOT EXISTS winagent_test CHARACTER SET utf8mb4 COLLATE utf8mb
 } else {
   Write-Step 'Configuration exists; refreshing generated defaults only'
   Invoke-Native -FilePath 'node.exe' -Arguments @('scripts\setup-env.mjs')
+  # Another install on this machine (or a manual change) may have reset the winagent user's
+  # password. Repair the MySQL side to match server\.env instead of failing the migration.
+  Write-Step 'Checking the database login in server\.env'
+  if (Test-DatabaseLogin) {
+    Write-Ok 'Database login works.'
+  } else {
+    Write-Warn 'The winagent database login does not work (password changed or user missing). Repairing it with the MySQL root account.'
+    Set-DatabaseUser -RootPassword (Read-RootPassword) -DbPassword (Get-DbInfo).Password
+    if (-not (Test-DatabaseLogin)) { throw 'The database login still fails. Check the MySQL root password and that MySQL is running on 127.0.0.1:3306.' }
+    Write-Ok 'Database login repaired.'
+  }
 }
 
 Write-Step 'Applying database migrations'

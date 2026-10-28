@@ -46,7 +46,18 @@ if (!existingServer.DATABASE_URL && !dbPassword) {
   process.exit(1);
 }
 
-const dbUrl = (db) => `mysql://winagent:${dbPassword}@127.0.0.1:3306/${db}`;
+// On a refresh no new password is given: derive every database URL from the existing
+// DATABASE_URL (same user, password, host) so none of them ends up with "undefined".
+const dbUrl = (db) => {
+  if (dbPassword) return `mysql://winagent:${dbPassword}@127.0.0.1:3306/${db}`;
+  const u = new URL(existingServer.DATABASE_URL);
+  u.pathname = `/${db}`;
+  return u.toString();
+};
+// Drop URLs damaged by an earlier version of this script so they are regenerated.
+for (const key of ['SHADOW_DATABASE_URL', 'TEST_DATABASE_URL']) {
+  if (existingServer[key]?.includes(':undefined@')) delete existingServer[key];
+}
 const aiToken = existingServer.AI_SERVICE_TOKEN ?? secret();
 
 const server = {
