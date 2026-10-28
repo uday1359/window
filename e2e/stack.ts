@@ -37,6 +37,7 @@ export function e2eEnv(): NodeJS.ProcessEnv {
     AI_SERVICE_URL: `http://127.0.0.1:${AI_PORT}`,
     AI_SERVICE_TOKEN: file.AI_SERVICE_TOKEN,
     STORAGE_DIR: join(E2E_DIR, 'storage'),
+    OFFLINE_QUEUE_FILE: join(E2E_DIR, 'offline-queue.jsonl'),
     BACKUP_DIR: join(E2E_DIR, 'backups'),
     MYSQL_BIN_DIR: file.MYSQL_BIN_DIR,
     WEB_ORIGIN: `http://127.0.0.1:${SERVER_PORT}`,

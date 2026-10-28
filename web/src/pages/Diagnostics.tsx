@@ -11,6 +11,7 @@ interface Diagnostics {
   aiService: { ok: boolean; ollama?: { reachable: boolean; models: string[] }; error?: string };
   agents: Array<{ id: string; name: string; connected: boolean; lastSeenAt: string | null; lastResources: Resources | null; agentVersion: string | null }>;
   queue: { queued: number; running: number; blocked: number; orchestratorBusy: boolean };
+  offlineQueue?: { databaseAvailable: boolean; pending: number; oldestQueuedAt: string | null; lastSyncAt: string | null; lastError: string | null };
 }
 
 interface Backup {
@@ -55,6 +56,12 @@ export function DiagnosticsPage() {
             <p className="small">
               Queue: {d.queue.queued} queued, {d.queue.running} running, {d.queue.blocked} blocked
             </p>
+            {d.offlineQueue && (
+              <p className="small">
+                Offline store: {d.offlineQueue.pending === 0 ? 'empty' : `${d.offlineQueue.pending} write(s) waiting for the database (oldest ${formatTime(d.offlineQueue.oldestQueuedAt)})`}
+                {d.offlineQueue.lastSyncAt ? ` · last saved to MySQL ${formatTime(d.offlineQueue.lastSyncAt)}` : ''}
+              </p>
+            )}
           </Card>
           <Card title="MySQL database">
             <p>

@@ -79,3 +79,12 @@ Messages below are quoted from the code. Commands assume PowerShell in the proje
 | Integration step: `not registered or is disabled` / `not allowed` | The plan used an integration, path or tool outside the allow list. | Enable the integration or add the path/tool (admin), then Resume. |
 | Integration step UNCERTAIN: `did not answer in time` | The external service may or may not have acted. | Check the external service yourself, then Resume. The step is never repeated automatically. |
 | `update.ps1` reports `failed and was rolled back` | A step of the update failed. | Read the error printed before the rollback; the previous version is running again. |
+
+## Database outages
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Server log: `Database unavailable … Writes are kept in …offline-queue.jsonl` | MySQL stopped or unreachable. | Start MySQL (`Start-Service MySQL84` or the service name shown in Services). The queue is saved automatically within about 10 s. |
+| Server log: `MySQL is not reachable at startup … continuing` | The server started before MySQL. | Nothing to do: it catches up when MySQL is reachable. Sign-in works once MySQL is back. |
+| Task shows INTERRUPTED: `The database was unavailable while this task ran` | An operation finished during the outage. Its result was kept and saved. | Review the steps on the task page, then press Resume. |
+| Diagnostics shows writes waiting although MySQL runs | The store retries every 10 s; see `lastError` in `GET /api/diagnostics`. | Check the server log for the reason a write was rejected. |

@@ -61,3 +61,24 @@ itself. Server operations have no journal, so a timeout becomes UNCERTAIN and is
 ## Key design choices
 
 See [DECISIONS.md](DECISIONS.md). Data model: [DATABASE.md](DATABASE.md). API: [API.md](API.md). Security: [SECURITY.md](SECURITY.md).
+
+## Offline store (database unavailable)
+
+`server/src/offline/offline-store.service.ts`. When MySQL is unavailable, important writes are kept in a local file,
+`data/offline-queue.jsonl`, and saved to MySQL automatically when it is back. They are:
+- the outcome of agent operations (execution, step result, checkpoint)
+- audit events
+- notifications
+
+The server also starts without MySQL. Signing in and the dashboard still need MySQL.
+
+- **Detection:** `isDatabaseUnavailable(err)` separates connection failures (refused, pool closed, cannot start a transaction, P1001/P1002/P1008/P1017/P2024) from ordinary errors such as constraint violations. Ordinary errors are never queued.
+- **Queue:** one JSON line per write, flushed to disk (fsync) before returning. Only allow-listed writes are accepted: `auditEvent.create`, `notification.create`, `taskExecution.update`, `taskStep.update`, `taskCheckpoint.create`. The cap is 100,000 entries.
+- **Sync:** every 10 s, when something is queued or an outage was seen, the store checks MySQL with `SELECT 1` and replays entries in order, removing each one by id after it is written.
+  - Creates carry their own unique id (`AuditEvent.offlineId`, notification and checkpoint ids), so a duplicate replay is skipped.
+  - Updates set absolute values.
+  - Records that no longer exist are skipped with a warning.
+- **After reconnecting:**
+  - start-up work deferred by the outage runs: the RBAC seed, restart recovery and the real emergency-stop state
+  - tasks left RUNNING are marked INTERRUPTED for review (`recoverAfterOutage`), never resumed automatically
+- **Start-up without MySQL:** the agent hub starts with emergency stop active (agents get no work) until the stored state can be read.

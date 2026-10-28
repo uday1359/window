@@ -4,7 +4,7 @@ Status as of 2026-10-28. See [REQUIREMENTS_TRACEABILITY.md](REQUIREMENTS_TRACEAB
 
 ## Not yet validated by a test run
 
-All 208 automated tests passed on 2026-10-28 (docs/TESTING.md). The following have no passing run yet:
+All 217 automated tests passed on 2026-10-28 (docs/TESTING.md). The following have no passing run yet:
 
 - **Update / rollback lifecycle** (`scripts\test-lifecycle.ps1`): `install.ps1` passed in a sandbox, but the full lifecycle needs about 4 GB of free memory. Run `scripts\validate.ps1 -IncludeLifecycle` on a larger machine.
 - **TLS remote access** (`scripts\new-tls-cert.ps1`, `TLS_*` settings, agent `ca_file`).
@@ -49,3 +49,11 @@ All 208 automated tests passed on 2026-10-28 (docs/TESTING.md). The following ha
 - The agent must run as a normal user; `--allow-elevated` exists but is not recommended.
 - Approved folders and allowed apps can only be changed in `%LOCALAPPDATA%\WinAgent\agent-config.json` on the PC.
 - Local LLM planning with `qwen2.5:3b` took about 59 s in testing; the rule planner is instant.
+
+## Database outages
+
+- While MySQL is unavailable:
+  - signing in, the dashboard, task creation and planning do not work
+  - an operation that finishes is kept locally, and its task is marked INTERRUPTED for review afterwards
+- The offline queue holds at most 100,000 entries; beyond that, new writes are logged as lost.
+- A real MySQL outage was simulated in tests by pointing the server at a closed port, not by stopping the MySQL service.

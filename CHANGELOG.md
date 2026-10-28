@@ -70,3 +70,9 @@ First implementation of the PRD.
 - **Credentials file instead of prompts:** `credentials.env` (template `credentials.env.example`, git-ignored, never overwritten by updates) holds `MYSQL_ROOT_PASSWORD`; `setup-windows` and `install.ps1` read it and stop with instructions if it is missing. README section "Credentials" lists every credential and where it goes.
 - Orchestrator stops ticking before the database connection closes at shutdown.
 - Tests: 208 passed (server unit 73, integration 33, dashboard 10, AI service 51, agent 39, e2e 2).
+
+## Offline store for database outages (2026-10-28)
+- When MySQL is unavailable, important writes are kept in a local file, `data/offline-queue.jsonl`, and saved to MySQL automatically when it is back. They are: - the outcome of agent operations (execution, step result, checkpoint) - audit events - notifications  The server also starts without MySQL. Signing in and the dashboard still need MySQL.
+- New migration `20261028150000_audit_offline_id` (`AuditEvent.offlineId`, unique) for idempotent replay.
+- Diagnostics shows the offline store; new setting `OFFLINE_QUEUE_FILE`.
+- Tests: 217 passed, including a real-server outage test (server pointed at a closed port).

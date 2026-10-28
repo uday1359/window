@@ -524,6 +524,8 @@ model AuditEvent {
   taskId     String?  @db.Char(36)
   outcome    String   @db.VarChar(16) // SUCCESS | FAILURE | DENIED | INFO
   details    Json?    // always passed through the redactor first
+  /// Set when the event was kept in the offline queue; makes the replay idempotent.
+  offlineId  String?  @unique @db.Char(36)
   createdAt  DateTime @default(now()) @db.DateTime(3)
 
   @@index([taskId])

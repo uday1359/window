@@ -337,3 +337,11 @@ OCR runs locally with the Windows engine. There is no telemetry or analytics.
 | TLS (FR-20) | See section 2. |
 | Offline planning retries (FR-14) | Re-planning only produces a plan; policy and approvals still apply. Paused during emergency stop. Cancel ends the wait. |
 | Update / rollback scripts (FR-19) | Snapshots include `.env` files and a full database dump in `backups\releases`: protect that folder like the database. The MySQL root password is read from `credentials.env` (git-ignored, never overwritten by updates; delete the value after installing) and sent to `mysql.exe` on stdin, never on a command line. There are no password prompts. The generated `winagent` password exists only in `server\.env`. |
+
+## 20. Offline store
+
+`data/offline-queue.jsonl` holds writes made while MySQL is unavailable: audit details (already
+redacted), notification texts and operation outputs (which may contain file content or page text).
+It is plain text, protected by the Windows account and folder permissions like the rest of
+`data\`. Entries are removed as soon as they are saved to MySQL. Lines are validated against an
+allow-list before replay, so a modified file cannot write to other tables.

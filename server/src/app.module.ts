@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.service';
 import { AuditModule } from './audit/audit.service';
+import { OfflineModule } from './offline/offline-store.service';
 import { AllExceptionsFilter } from './common/errors';
 import { AuthService } from './auth/auth.service';
 import { AuthGuard } from './auth/auth.guard';
@@ -29,7 +30,7 @@ import { MemoryController } from './memory/memory.controller';
 import { BackupsController, BackupsService } from './backups/backups.service';
 
 @Module({
-  imports: [PrismaModule, AuditModule],
+  imports: [PrismaModule, OfflineModule, AuditModule],
   controllers: [AuthController, TasksController, ApprovalsController, AgentsController, SettingsController, SystemController, MemoryController, NotificationsController, BackupsController, IntegrationsController],
   providers: [
     AuthService,

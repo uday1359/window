@@ -12,6 +12,7 @@ import { TaskStateService } from '../tasks/task-state.service';
 import { AiClientService, ResearchFindings, ResearchSource } from '../ai/ai-client.service';
 import { loadRoutingInputs } from '../ai/routing-inputs';
 import { IntegrationsService, IntegrationUncertainError } from '../integrations/integrations.service';
+import { isDatabaseUnavailable, OfflineStore } from '../offline/offline-store.service';
 import { actionHash } from '../common/crypto';
 import { redact, redactString } from '../common/redact';
 import { loadConfig } from '../config/config';
@@ -52,12 +53,33 @@ export class OrchestratorService implements OnApplicationBootstrap, OnModuleDest
     private readonly state: TaskStateService,
     private readonly ai: AiClientService,
     private readonly integrations: IntegrationsService,
+    private readonly offline: OfflineStore,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.recoverAfterRestart();
-    const system = await this.prisma.systemState.findUniqueOrThrow({ where: { id: 1 } });
-    this.hub.start(system.emergencyStop);
+    const startUp = async (): Promise<boolean> => {
+      await this.recoverAfterRestart();
+      const system = await this.prisma.systemState.findUniqueOrThrow({ where: { id: 1 } });
+      this.hub.setEmergencyStop(system.emergencyStop);
+      return system.emergencyStop;
+    };
+    try {
+      this.hub.start(await startUp());
+    } catch (err) {
+      if (!isDatabaseUnavailable(err)) throw err;
+      // Start without MySQL: agents get "emergency stop" (no work) until the real state is known.
+      this.hub.start(true);
+      this.offline.markUnavailable(err);
+      let pending = true;
+      this.offline.onDatabaseAvailable(async () => {
+        if (!pending) return;
+        await startUp();
+        pending = false;
+        this.logger.log('Database available: restart recovery completed and emergency-stop state restored');
+      });
+    }
+    // After any outage, tasks left RUNNING need a review (their outcomes were kept offline).
+    this.offline.onDatabaseAvailable(() => this.recoverAfterOutage());
     if (process.env.WINAGENT_DISABLE_ORCHESTRATOR !== '1') {
       this.timer = setInterval(() => void this.tick(), loadConfig().ORCHESTRATOR_TICK_MS);
       this.timer.unref();
@@ -111,7 +133,9 @@ export class OrchestratorService implements OnApplicationBootstrap, OnModuleDest
       const next = await this.nextRunnable();
       if (next) await this.runTask(next);
     } catch (err) {
-      this.logger.error(redactString(`Orchestrator tick failed: ${(err as Error).message}`));
+      // An outage is reported once by the offline store, not every tick.
+      if (isDatabaseUnavailable(err)) this.offline.markUnavailable(err);
+      else this.logger.error(redactString(`Orchestrator tick failed: ${(err as Error).message}`));
     } finally {
       this.ticking = false;
     }
@@ -264,21 +288,27 @@ export class OrchestratorService implements OnApplicationBootstrap, OnModuleDest
         }
       }
 
-      await this.prisma.taskExecution.update({
-        where: { operationId },
-        data: { status: result.ok ? 'SUCCEEDED' : result.code === 'CANCELLED' ? 'CANCELLED' : 'FAILED', output: truncateResult(result), error: result.error?.slice(0, 1000), finishedAt: new Date() },
-      });
+      const executionData = { status: result.ok ? 'SUCCEEDED' : result.code === 'CANCELLED' ? 'CANCELLED' : 'FAILED', output: truncateResult(result), error: result.error?.slice(0, 1000), finishedAt: new Date() } as const;
+      const fingerprint = typeof result.output?.sha256 === 'string' ? { sha256: result.output.sha256 } : {};
+      const checkpointState = { operation: step.operation, target: def.target(params as never), ...fingerprint };
+      try {
+        await this.prisma.taskExecution.update({ where: { operationId }, data: executionData });
 
-      if (result.ok && step.operation === 'browser.research') result = await this.withFindings(task, String(params.query), result);
+        if (result.ok && step.operation === 'browser.research') result = await this.withFindings(task, String(params.query), result);
 
-      if (result.ok) {
-        await this.prisma.$transaction(async (tx) => {
-          await tx.taskStep.update({ where: { id: step.id }, data: { status: 'SUCCEEDED', result: truncateResult(result), finishedAt: new Date(), error: null } });
-          const fingerprint = typeof result.output?.sha256 === 'string' ? { sha256: result.output.sha256 } : {};
-          await tx.taskCheckpoint.create({ data: { taskId: task.id, stepIndex: step.index, state: { operation: step.operation, target: def.target(params as never), ...fingerprint }, verified: true } });
-          await this.audit.record({ actorType: device ? 'AGENT' : 'SYSTEM', actorId: device?.id ?? null, action: 'step.succeeded', targetType: 'step', targetId: step.id, taskId: task.id, outcome: 'SUCCESS', details: { operation: step.operation, attempt: attempts } }, tx);
-        });
-        return 'ok';
+        if (result.ok) {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.taskStep.update({ where: { id: step.id }, data: { status: 'SUCCEEDED', result: truncateResult(result), finishedAt: new Date(), error: null } });
+            await tx.taskCheckpoint.create({ data: { taskId: task.id, stepIndex: step.index, state: checkpointState, verified: true } });
+            await this.audit.record({ actorType: device ? 'AGENT' : 'SYSTEM', actorId: device?.id ?? null, action: 'step.succeeded', targetType: 'step', targetId: step.id, taskId: task.id, outcome: 'SUCCESS', details: { operation: step.operation, attempt: attempts } }, tx);
+          });
+          return 'ok';
+        }
+      } catch (err) {
+        if (!isDatabaseUnavailable(err)) throw err;
+        // The operation already happened: keep its outcome locally so it reaches MySQL later.
+        this.saveOutcomeOffline(task, step, operationId, executionData, result, checkpointState, device?.id ?? null, attempts);
+        return 'stopped';
       }
 
       const code = result.code ?? 'ERROR';
@@ -302,6 +332,45 @@ export class OrchestratorService implements OnApplicationBootstrap, OnModuleDest
       await this.notifications.notify(task.userId, 'task', 'Task failed', `${task.title}: ${result.error ?? code}`, `/tasks/${task.id}`);
       return 'failed';
     }
+  }
+
+  /**
+   * Database unavailable right after an operation finished: queue its outcome (execution, step,
+   * checkpoint, audit) in the local offline store. The task stays RUNNING in MySQL and becomes
+   * INTERRUPTED once the database is back (recoverAfterOutage), so a human reviews it.
+   */
+  private saveOutcomeOffline(
+    task: Task,
+    step: TaskStep,
+    operationId: string,
+    executionData: Record<string, unknown>,
+    result: OperationResult,
+    checkpointState: Record<string, unknown>,
+    deviceId: string | null,
+    attempts: number,
+  ): void {
+    const now = new Date().toISOString();
+    this.offline.enqueue('taskExecution', 'update', { where: { operationId }, data: executionData });
+    if (result.ok) {
+      this.offline.enqueue('taskStep', 'update', { where: { id: step.id }, data: { status: 'SUCCEEDED', result: truncateResult(result), finishedAt: now, error: null } });
+      this.offline.enqueue('taskCheckpoint', 'create', { data: { id: randomUUID(), taskId: task.id, stepIndex: step.index, state: checkpointState, verified: true, createdAt: now } });
+    } else {
+      this.offline.enqueue('taskStep', 'update', { where: { id: step.id }, data: { status: result.code === 'CANCELLED' ? 'CANCELLED' : 'FAILED', error: (result.error ?? result.code ?? 'ERROR').slice(0, 1000), finishedAt: now } });
+    }
+    this.offline.enqueue('auditEvent', 'create', {
+      data: { offlineId: randomUUID(), actorType: deviceId ? 'AGENT' : 'SYSTEM', actorId: deviceId, action: result.ok ? 'step.succeeded' : 'step.failed', targetType: 'step', targetId: step.id, taskId: task.id, outcome: result.ok ? 'SUCCESS' : 'FAILURE', details: redact({ operation: step.operation, attempt: attempts, savedOffline: true, code: result.code }) as Prisma.InputJsonValue, createdAt: now },
+    });
+    this.logger.warn(`Database unavailable: outcome of step ${step.index + 1} of task ${task.id} kept in the offline queue`);
+  }
+
+  /** After a database outage: tasks left RUNNING (not the one in progress) need a human to review them. */
+  async recoverAfterOutage(): Promise<void> {
+    const stale = await this.prisma.task.findMany({ where: { status: 'RUNNING', ...(this.currentTaskId ? { id: { not: this.currentTaskId } } : {}) }, select: { id: true } });
+    for (const t of stale) {
+      await this.prisma.taskStep.updateMany({ where: { taskId: t.id, status: 'RUNNING' }, data: { status: 'UNCERTAIN' } });
+      await this.state.transition(t.id, 'INTERRUPTED', { from: ['RUNNING'], reason: 'The database was unavailable while this task ran. Its results were kept and saved; review the steps, then press Resume.' });
+    }
+    if (stale.length) this.logger.warn(`${stale.length} task(s) marked INTERRUPTED after a database outage`);
   }
 
   /**

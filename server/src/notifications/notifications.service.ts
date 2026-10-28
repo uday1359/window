@@ -1,5 +1,7 @@
 import { Controller, Get, HttpCode, Injectable, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { OfflineStore } from '../offline/offline-store.service';
 import { EventsService } from '../realtime/events.service';
 import { AuthUser, CurrentUser } from '../auth/auth.types';
 
@@ -8,11 +10,14 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
+    private readonly offline: OfflineStore,
   ) {}
 
   async notify(userId: string, kind: string, title: string, body: string, link?: string): Promise<void> {
-    const n = await this.prisma.notification.create({ data: { userId, kind, title: title.slice(0, 200), body: body.slice(0, 1000), link } });
-    this.events.publish(userId, { type: 'notification', notification: n });
+    // An explicit id and time make a queued notification identical when it is replayed later.
+    const data = { id: randomUUID(), userId, kind, title: title.slice(0, 200), body: body.slice(0, 1000), link: link ?? null, createdAt: new Date() };
+    await this.offline.write('notification', 'create', { data });
+    this.events.publish(userId, { type: 'notification', notification: { ...data, readAt: null } });
   }
 
   list(userId: string, unreadOnly: boolean) {

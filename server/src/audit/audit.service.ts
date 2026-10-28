@@ -1,4 +1,6 @@
 import { Global, Injectable, Logger, Module } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { isDatabaseUnavailable, OfflineStore } from '../offline/offline-store.service';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { redact, redactString } from '../common/redact';
@@ -20,7 +22,10 @@ type Tx = Prisma.TransactionClient | PrismaService;
 export class AuditService {
   private readonly logger = new Logger('Audit');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly offline: OfflineStore,
+  ) {}
 
   /**
    * Records an audit event. Details are always redacted. When a transaction client is
@@ -44,6 +49,17 @@ export class AuditService {
     try {
       await this.prisma.auditEvent.create({ data });
     } catch (err) {
+      if (isDatabaseUnavailable(err)) {
+        // Kept in the local offline queue and written to MySQL when it is back (idempotent via offlineId).
+        try {
+          const { details, ...rest } = data;
+          this.offline.enqueue('auditEvent', 'create', { data: { ...rest, ...(input.details ? { details } : {}), offlineId: randomUUID(), createdAt: new Date().toISOString() } });
+          return;
+        } catch (queueErr) {
+          this.logger.error(redactString(`Audit event ${input.action} lost: ${(queueErr as Error).message}`));
+          return;
+        }
+      }
       // Auditing outside a transaction must not break the calling operation, but it must be visible.
       this.logger.error(redactString(`Failed to write audit event ${input.action}: ${(err as Error).message}`));
     }

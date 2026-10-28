@@ -7,7 +7,7 @@ approval; a local Windows agent executes the authorised operations; and the serv
 the real outcome with evidence before calling anything "complete".
 
 > Status: see [docs/REQUIREMENTS_TRACEABILITY.md](docs/REQUIREMENTS_TRACEABILITY.md) and
-> [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md). All 208 automated tests pass (2026-10-28), including
+> [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md). All 217 automated tests pass (2026-10-28), including
 > the mandatory acceptance task (create, read back and verify `hello.txt`) end-to-end with the
 > **real** agent, Windows OCR, research, screenshot attachments, integrations (against simulated
 > servers), deadlines and offline retries. Not yet validated by a test run:
@@ -79,6 +79,16 @@ or uploaded, and `scripts\update.ps1` never overwrites them.
 | `docs/` | Architecture, API, database, security, deployment, testing, troubleshooting, decisions, requirements (PRD) and traceability, known issues, architecture PDFs |
 | `setup-windows.cmd` / `.ps1` | One-click setup of a new Windows computer |
 | `.vscode/` | Recommended extensions and editor settings |
+
+## When the database is unavailable
+
+When MySQL is unavailable, important writes are kept in a local file,
+`data/offline-queue.jsonl`, and saved to MySQL automatically when it is back. They are:
+- the outcome of agent operations (execution, step result, checkpoint)
+- audit events
+- notifications
+
+The server also starts without MySQL. Signing in and the dashboard still need MySQL. Pending writes are shown on the Diagnostics page.
 
 ## Quick start (Windows PowerShell, project folder)
 

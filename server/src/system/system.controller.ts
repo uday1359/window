@@ -7,6 +7,7 @@ import { AiClientService } from '../ai/ai-client.service';
 import { AgentHubService } from '../realtime/agent-hub.service';
 import { EventsService } from '../realtime/events.service';
 import { OrchestratorService } from '../orchestrator/orchestrator.service';
+import { OfflineStore } from '../offline/offline-store.service';
 import { TaskStateService } from '../tasks/task-state.service';
 import { parse } from '../common/errors';
 import { AuthUser, can, CurrentUser, Public, RequirePermissions } from '../auth/auth.types';
@@ -62,6 +63,7 @@ export class SystemController {
     private readonly hub: AgentHubService,
     private readonly events: EventsService,
     private readonly orchestrator: OrchestratorService,
+    private readonly offline: OfflineStore,
   ) {}
 
   /** Liveness probe: deliberately reveals nothing beyond up/down. */
@@ -137,6 +139,7 @@ export class SystemController {
       aiService: ai,
       agents: devices.map((d) => ({ ...d, connected: this.hub.isConnected(d.id) })),
       queue: { queued, running, blocked, orchestratorBusy: this.orchestrator.isBusy() },
+      offlineQueue: this.offline.status(),
     };
   }
 

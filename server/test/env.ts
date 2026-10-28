@@ -32,6 +32,7 @@ export function applyTestEnv(): void {
     AI_SERVICE_URL: `http://127.0.0.1:${AI_TEST_PORT}`,
     AI_SERVICE_TOKEN: file.AI_SERVICE_TOKEN ?? 'x'.repeat(48),
     STORAGE_DIR: join(scratch, 'storage'),
+    OFFLINE_QUEUE_FILE: join(scratch, 'offline-queue.jsonl'),
     BACKUP_DIR: join(scratch, 'backups'),
     // Empty = the server finds the newest MySQL Server under the Program Files folder.
     MYSQL_BIN_DIR: file.MYSQL_BIN_DIR ?? '',

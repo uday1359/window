@@ -1,4 +1,4 @@
-import { Global, Injectable, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Global, Injectable, Logger, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '../generated/prisma/client';
 import { loadConfig } from '../config/config';
@@ -25,7 +25,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit(): Promise<void> {
-    await this.$connect();
+    try {
+      await this.$connect();
+    } catch (err) {
+      // The server still starts: important writes go to the offline queue and are replayed
+      // when MySQL is reachable (OfflineStore). Queries reconnect automatically.
+      new Logger('Prisma').warn(`MySQL is not reachable at startup (${(err as Error).name}); continuing and retrying in the background`);
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

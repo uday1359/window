@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { isDatabaseUnavailable, OfflineStore } from '../offline/offline-store.service';
 import { hashPassword, randomToken, sha256, verifyPassword } from '../common/crypto';
 import { loadConfig } from '../config/config';
 import { PERMISSIONS, PermissionId, ROLES } from './rbac';
@@ -17,10 +18,18 @@ export class AuthService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly offline: OfflineStore,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.seedRbac();
+    try {
+      await this.seedRbac();
+    } catch (err) {
+      if (!isDatabaseUnavailable(err)) throw err;
+      // Started without MySQL: sync roles and permissions as soon as it is reachable.
+      this.offline.markUnavailable(err);
+      this.offline.onDatabaseAvailable(() => this.seedRbac());
+    }
   }
 
   /** Idempotently syncs roles/permissions from code into MySQL. */

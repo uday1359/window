@@ -275,3 +275,17 @@ Without TLS settings, the server refuses to start on any non-loopback `HOST`.
   2. Add the integration with its base URL, allowed paths (REST) or tools (MCP), and the
      secret name.
   3. For MCP, use **Show tools** to see what the server offers, then allow only what tasks need.
+
+## 15. Database outages
+
+When MySQL is unavailable, important writes are kept in a local file,
+`data/offline-queue.jsonl`, and saved to MySQL automatically when it is back. They are:
+- the outcome of agent operations (execution, step result, checkpoint)
+- audit events
+- notifications
+
+The server also starts without MySQL. Signing in and the dashboard still need MySQL.
+
+- File: `OFFLINE_QUEUE_FILE` in `server\.env` (default `data/offline-queue.jsonl`). `scripts\update.ps1` never touches `data\`.
+- Status: dashboard **Diagnostics** → "Offline store", or count the lines of the file.
+- Do not edit or delete the file while entries are pending, unless you accept losing them.

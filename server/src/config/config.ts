@@ -29,6 +29,8 @@ const EnvSchema = z.object({
   // for any Windows user and any install location.
   STORAGE_DIR: z.string().min(1).default('storage'),
   BACKUP_DIR: z.string().min(1).default('backups'),
+  /** Local file that keeps important writes while MySQL is unavailable (replayed automatically). */
+  OFFLINE_QUEUE_FILE: z.string().min(1).default('data/offline-queue.jsonl'),
   /** Defaults to the newest MySQL Server found under %ProgramFiles%\MySQL. */
   MYSQL_BIN_DIR: z.string().optional(),
   WEB_DIST_DIR: z.string().optional(),
@@ -71,6 +73,7 @@ export function loadConfig(): AppConfig {
     ...c,
     STORAGE_DIR: fromRoot(c.STORAGE_DIR),
     BACKUP_DIR: fromRoot(c.BACKUP_DIR),
+    OFFLINE_QUEUE_FILE: fromRoot(c.OFFLINE_QUEUE_FILE),
     WEB_DIST_DIR: optionalFromRoot(c.WEB_DIST_DIR),
     TLS_PFX_FILE: optionalFromRoot(c.TLS_PFX_FILE),
     TLS_CERT_FILE: optionalFromRoot(c.TLS_CERT_FILE),

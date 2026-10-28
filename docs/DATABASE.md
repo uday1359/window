@@ -346,3 +346,11 @@ Other changes without schema impact:
 - `TaskExecution.agentDeviceId` is null for integration steps (they run on the server).
 - `VerificationEvidence.kind` may now be `screen_contains_text`.
 - Prisma 7 requires a driver adapter: `createAdapter()` in `server/src/prisma/prisma.service.ts` (MariaDB driver; `connectionLimit=10`, `allowPublicKeyRetrieval=true` for MySQL 8 on localhost). Test helpers that rely on `SET FOREIGN_KEY_CHECKS` use a pool of 1 connection, because that setting is per connection.
+
+## 11. Offline store (2026-10-28)
+
+| Change | Migration | Purpose |
+|---|---|---|
+| `AuditEvent.offlineId CHAR(36) NULL`, unique | `20261028150000_audit_offline_id` | Makes replaying a queued audit event idempotent. |
+
+Queued writes live in `OFFLINE_QUEUE_FILE` (default `data/offline-queue.jsonl`, relative to the project folder) until MySQL is reachable. See docs/ARCHITECTURE.md, "Offline store".
