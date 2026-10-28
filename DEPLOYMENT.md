@@ -45,7 +45,7 @@ The numbered sections below describe the same work by hand, for troubleshooting 
 
 - Windows 11, normal (non-administrator) user account
 - Node.js 22+ and npm 11 (tested with Node 24.22.1)
-- Python 3.11+ (tested with 3.13.17)
+- Python 3.11-3.13 (tested with 3.13.17; 3.14+ not supported yet: no prebuilt wheels for the pinned packages)
 - MySQL 8.0 server on `127.0.0.1:3306`, plus client tools (`mysql.exe`, `mysqldump.exe`;
   default path `C:/Program Files/MySQL/MySQL Server 8.0/bin`) for backups
 - Microsoft Edge (Playwright browser channel for the agent and e2e tests)

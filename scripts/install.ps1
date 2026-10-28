@@ -40,8 +40,9 @@ function Get-NodeMajor {
 }
 
 function Get-SystemPython {
-  # The py launcher picks the newest installed Python; fall back to python.exe on PATH.
-  foreach ($candidate in @(@('py.exe', '-3'), @('python.exe'))) {
+  # Prefer the tested versions: the pinned packages ship prebuilt wheels for them, while a newer
+  # Python (e.g. 3.15) makes pip compile pydantic-core and needs Visual C++ build tools.
+  foreach ($candidate in @(@('py.exe', '-3.13'), @('py.exe', '-3.12'), @('py.exe', '-3.11'), @('py.exe', '-3'), @('python.exe'))) {
     $cmd = Get-Command $candidate[0] -ErrorAction SilentlyContinue
     if (-not $cmd) { continue }
     $launcherArgs = @($candidate | Select-Object -Skip 1)
@@ -58,7 +59,7 @@ function Get-Prerequisites {
   try { Get-MySqlBin | Out-Null } catch { $mysqlClient = $false }
   [ordered]@{
     Node = (Get-NodeMajor) -ge 22
-    Python = [bool]($python -and $python.Version -ge [version]'3.11')
+    Python = [bool]($python -and $python.Version -ge [version]'3.11' -and $python.Version -lt [version]'3.14')
     MySql = [bool]($mysqlService -and $mysqlClient)
     Edge = [bool]($EdgePaths | Where-Object { Test-Path $_ })
   }
@@ -108,6 +109,14 @@ if ($Desktop) {
 }
 
 Write-Step 'Installing Python dependencies'
+if (Test-Path $script:Python) {
+  # A venv made with an unsupported Python (e.g. 3.15) cannot install the pinned packages: rebuild it.
+  $venvVersion = & $script:Python -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+  if (-not $venvVersion -or [version]$venvVersion -lt [version]'3.11' -or [version]$venvVersion -ge [version]'3.14') {
+    Write-Warn "Recreating .venv: it uses Python $venvVersion; WinAgent needs 3.11-3.13."
+    Remove-Item (Join-Path $script:Root '.venv') -Recurse -Force
+  }
+}
 if (-not (Test-Path $script:Python)) {
   $sys = Get-SystemPython
   Invoke-Native -FilePath $sys.Path -Arguments ($sys.Args + @('-m', 'venv', '.venv'))

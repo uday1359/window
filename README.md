@@ -51,7 +51,7 @@ Architecture: [ARCHITECTURE.md](ARCHITECTURE.md) · Data model: [DATABASE.md](DA
 
 - Windows 11, a normal (non-administrator) user account
 - Node.js 22+ (tested with 24.22.1) and npm 11
-- Python 3.11+ (tested with 3.13.17)
+- Python 3.11-3.13 (tested with 3.13.17; 3.14+ is not supported yet: the pinned packages have no prebuilt wheels for it)
 - MySQL 8.0 (tested with 8.0 on localhost:3306)
 - Microsoft Edge (used by Playwright for browser automation and e2e tests)
 - Optional: Ollama with a local model (tested with `qwen2.5:3b`)
