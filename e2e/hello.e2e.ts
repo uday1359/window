@@ -80,9 +80,9 @@ test('REAL agent: a policy-denied folder is never touched and the task is reject
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByRole('link', { name: 'Permissions' }).click();
-  await page.getByLabel('Type').selectOption('FOLDER');
-  await page.getByLabel('Value').fill('test:private');
-  await page.getByLabel('Effect').selectOption('DENY');
+  await page.getByRole('combobox', { name: 'Type', exact: true }).selectOption('FOLDER');
+  await page.getByRole('textbox', { name: 'Value', exact: true }).fill('test:private');
+  await page.getByRole('combobox', { name: 'Effect', exact: true }).selectOption('DENY');
   await page.getByRole('button', { name: 'Add policy' }).click();
   await expect(page.getByText('Policy added')).toBeVisible();
 

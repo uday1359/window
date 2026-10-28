@@ -124,18 +124,18 @@ export function IntegrationsCard() {
         <h3>Add integration</h3>
         <div className="grid-3">
           <label>
-            Name
+            Integration name
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required pattern="[a-z][a-z0-9_-]{0,31}" title="Lowercase letters, digits, - and _ (max 32)" />
           </label>
           <label>
-            Type
+            Integration type
             <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as Integration['kind'] })}>
               <option value="REST">REST API</option>
               <option value="MCP">MCP server (HTTP)</option>
             </select>
           </label>
           <label>
-            Address
+            Integration address
             <input type="url" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} required maxLength={500} aria-describedby="integration-url-help" />
           </label>
         </div>
